@@ -1,0 +1,56 @@
+# Root composer for the Hydra-native config tree.
+#
+# The root config establishes the minimum composition: misc group + _self_,
+# plus the hydra: block. Subsequent phases add data/model/experiment
+# groups to the defaults list as they are ported.
+#
+# chdir: false (R5 fix) keeps cwd == repo root so resume paths and
+# W&B run dirs stay anchored. Without this, Hydra switches cwd to
+# its run dir and W&B accumulates per-run artifact trees there until
+# the file quota explodes.
+#
+# hydra.run.dir is co-located with misc.artifacts_dir so Hydra's
+# .hydra/config.yaml metadata lives next to model artifacts for replay.
+# misc.artifacts_dir contains ${.seed} which OmegaConf resolves lazily
+# at access time, so the indirect reference is safe.
+defaults:
+  - misc: base
+  - _self_
+
+# Per-encoder slug pieces (unified DL+FPCA grammar). Each set encoder / FPCA
+# block is described by a time axis (`*_time`) and a channel set (`*_chan` +
+# `*_aug`), interpolated inline into the peer token in `model_name` (e.g.
+# `vi.t=${vi_time}.c=${vi_chan}${vi_aug}`). The `axis` group sets the time +
+# augmentation pieces; the `vi_subset` / `weather_subset` groups set the
+# channel-subset pieces. These root defaults keep `model_name` / `model_slug`
+# resolvable even when no such group is composed
+# and encode the baseline (native dap axis, full channels, no augmentation).
+vi_time: dap
+vi_chan: full
+vi_aug: ""
+wthr_time: dap
+wthr_chan: full
+wthr_aug: ""
+
+# Timepoint-subsample (set-element augmentation) slug pieces, set by the
+# `augment` group (TNP train-only curve subsampling). Empty by default
+# so a no-aug run's slug is byte-identical; rendered inside each per-modality
+# token (`vi.t=…c=…${vi_aug}${vi_tsub}`).
+vi_tsub: ""
+wthr_tsub: ""
+
+# Weight-averaging slug tag — appended to `model_slug` so an EMA run's identity
+# (and artifact dir) differ from its raw twin. Derived from
+# `misc.weight_averaging` so it can never drift from the actual setting; the
+# `cond` resolver yields "" when averaging is off, leaving baseline slugs
+# unchanged.
+wa_tag: ${cond:${misc.weight_averaging.enabled},"_wa=${misc.weight_averaging.kind}${misc.weight_averaging.decay}"}
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: ${misc.artifacts_dir}
+  sweep:
+    dir: ${misc.artifacts_dir}
+    subdir: ${hydra.job.override_dirname}

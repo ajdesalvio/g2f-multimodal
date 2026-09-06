@@ -1,0 +1,165 @@
+#!/bin/bash
+# =============================================================================
+# LOO CV — FPCA baseline fold job (CPU only)
+# =============================================================================
+# Fits FPCA + regression on all-but-one environment, evaluates on the held-out
+# environment, and writes metrics.json in the unified schema.
+#
+# Two modes (selected by which env vars are set):
+#
+#   MULTI-FOLD MODE (batched CV in one allocation — used by submit_fseq.sh):
+#     FOLDS         — space-separated compound fold IDs, e.g. "DEH1.2020 IAH4.2021"
+#     ARTIFACT_ROOT — base path, e.g. "artifacts/cv/env_year_loo"
+#     Each fold's per-fold OUT_DIR is built as
+#       ${ARTIFACT_ROOT}/${fold_id}/${SLUG}/seed=${SEED}
+#     and skipped if metrics.json already exists (idempotent).
+#
+#   SINGLE-FOLD MODE (used by submit_fpar.sh):
+#     FOLD_ENV  — held-out environment code (e.g. DEH1)
+#     FOLD_YEAR — held-out year (e.g. 2020)
+#     OUT_DIR   — artifact output path for this single fold
+#
+# Common variables (both modes):
+#   CONFIG    — FPCA config name without .yaml (e.g. fpca_eid_ga_gd_gaXeid_gdXeid_vi_viXeid_bglr_mse)
+#   SLUG      — resolved per-encoder model_name (see cv.slug_util.resolve_slug)
+#   SEED      — random seed integer
+#
+# CPU-only: FPCA fitting and regression are CPU-bound. No GPU is requested.
+# Submitting to a CPU partition avoids wasting GPU allocation and reduces
+# queue wait time compared to the GPU partition.
+# =============================================================================
+
+#SBATCH --time=2:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=16G
+#SBATCH --output=scripts/jobs/cv/env_year_loo/logs/%x.txt
+
+# Resource directives below are defaults. submit_fseq.sh passes --time, --mem, etc.
+# as sbatch CLI flags which override these values; edit resources in submit_fseq.sh.
+
+# ---------------------------------------------------------------------------
+# baselines.fpca_train is a @hydra.main shim. Overrides use
+# bare Hydra CLI syntax: `key=value`, with `+experiment=fpca/${CONFIG}`
+# selecting the FPCA model fragment from conf/experiment/fpca/. The
+# compound fold string `${FOLD_ENV}.${FOLD_YEAR}` goes to misc.fold_env
+# unchanged; the dataset's two-dict AND list takes env and year as
+# separate entries. `+dataset.smoke_n=N` uses the `+` force-add prefix
+# because smoke_n has no schema slot in conf/data/g2f.yaml.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Guard: required env vars (CONFIG, SLUG, SEED always required; the rest
+# depend on mode)
+# ---------------------------------------------------------------------------
+[[ -z "${CONFIG:-}" || -z "${SLUG:-}" || -z "${SEED:-}" ]] \
+  && { echo "[fpca_job] ERROR: Missing CONFIG, SLUG, or SEED"; exit 1; }
+
+if [[ -n "${FOLDS:-}" ]]; then
+  [[ -z "${ARTIFACT_ROOT:-}" ]] \
+    && { echo "[fpca_job] ERROR: Multi-fold mode requires ARTIFACT_ROOT"; exit 1; }
+  MODE="multi"
+  echo "[fpca_job] MULTI-FOLD  Config=${CONFIG}  Slug=${SLUG}  Seed=${SEED}"
+  echo "[fpca_job] Folds: ${FOLDS}"
+  echo "[fpca_job] Artifact root: ${ARTIFACT_ROOT}"
+else
+  [[ -z "${FOLD_ENV:-}" || -z "${FOLD_YEAR:-}" || -z "${OUT_DIR:-}" ]] \
+    && { echo "[fpca_job] ERROR: Single-fold mode requires FOLD_ENV, FOLD_YEAR, OUT_DIR"; exit 1; }
+  MODE="single"
+  echo "[fpca_job] SINGLE-FOLD  Fold=${FOLD_ENV}.${FOLD_YEAR}  Config=${CONFIG}  Slug=${SLUG}  Seed=${SEED}"
+  echo "[fpca_job] Output: ${OUT_DIR}"
+fi
+
+# ---------------------------------------------------------------------------
+# Environment setup
+# ---------------------------------------------------------------------------
+module purge
+module load GCC/13.2.0
+module load Python/3.11.5
+module load WebProxy/0000
+module load git/2.42.0
+
+module load R/4.4.1
+export R_LIBS_USER=/scratch/user/$USER/neural-processes/env/r_libs
+
+ROOT_DIR="/scratch/user/$USER/neural-processes/g2f-multimodal/neural-process"
+ENV_PATH="/scratch/user/$USER/neural-processes/env/bin/activate"
+
+[[ -f "${ENV_PATH}" ]] || { echo "[fpca_job] ERROR: venv not found at ${ENV_PATH}"; exit 1; }
+source "${ENV_PATH}"
+
+cd "${ROOT_DIR}" || { echo "[fpca_job] ERROR: Cannot cd to ${ROOT_DIR}"; exit 1; }
+
+# Stage wandb run dirs on node-local scratch ($TMPDIR, auto-reaped at job end)
+# so they never pile up against the /scratch inode quota;
+# the EXIT trap below still syncs to wandb.ai.
+export WANDB_DIR="${TMPDIR:-/tmp}/wandb_${SLURM_JOB_ID:-$$}"
+mkdir -p "${WANDB_DIR}"
+
+# Ensure wandb local data is cleaned up even if the job fails
+trap 'wandb sync --clean --clean-force --clean-old-hours 0' EXIT
+
+# Optional smoke-mode subsampling: if SMOKE_N is set in the environment,
+# pass it as a Hydra override; otherwise omit it.
+SMOKE_N_OVERRIDE=()
+if [[ -n "${SMOKE_N:-}" ]]; then
+  SMOKE_N_OVERRIDE=("+dataset.smoke_n=${SMOKE_N}")
+fi
+
+# ---------------------------------------------------------------------------
+# run_one_fold — fits + evaluates FPCA for one (fold_env, fold_year) pair.
+# Skips if metrics.json already exists at the given out_dir.
+# ---------------------------------------------------------------------------
+run_one_fold() {
+  local fold_env="$1"
+  local fold_year="$2"
+  local out_dir="$3"
+  local fold_id="${fold_env}.${fold_year}"
+
+  if [[ -f "${out_dir}/metrics.json" ]]; then
+    echo "[fpca_job] SKIP ${fold_id} (metrics.json exists)"
+    return 0
+  fi
+
+  # Hydra override grammar rejects bare `=` inside values and inside list
+  # literal elements. The SLUG and seed=${SEED} contain `=`, so paths
+  # and tag values must be single-quoted as string primitives.
+  echo "[fpca_job] ---- Running ${fold_id} ----"
+  python -m baselines.fpca_train \
+    +experiment=fpca/${CONFIG} \
+    "dataset.test_filter_columns=[{Env: ${fold_env}},{Year: ${fold_year}}]" \
+    "${SMOKE_N_OVERRIDE[@]}" \
+    "misc.artifacts_dir='${out_dir}'" \
+    "misc.metrics_dirpath='${out_dir}'" \
+    "misc.seed=${SEED}" \
+    "misc.fold_env=${fold_id}" \
+    "misc.wandb_logging_enabled=${WANDB_LOGGING:-false}" \
+    "misc.wandb_group='loo/${SLUG}/seed=${SEED}'" \
+    "misc.wandb_tags=[loo,'${SLUG}','fold=${fold_id}','seed=${SEED}']" \
+    || { echo "[fpca_job] ERROR: fpca_train failed on ${fold_id}"; return 1; }
+
+  echo "[fpca_job] DONE ${fold_id}  metrics.json → ${out_dir}/metrics.json"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Dispatch based on mode
+# ---------------------------------------------------------------------------
+if [[ "${MODE}" == "multi" ]]; then
+  FAIL_COUNT=0
+  for fold_id in ${FOLDS}; do
+    fold_env="${fold_id%.*}"
+    fold_year="${fold_id##*.}"
+    out_dir="${ARTIFACT_ROOT}/${fold_id}/${SLUG}/seed=${SEED}"
+    run_one_fold "${fold_env}" "${fold_year}" "${out_dir}" \
+      || (( ++FAIL_COUNT ))
+  done
+  if (( FAIL_COUNT > 0 )); then
+    echo "[fpca_job] ${FAIL_COUNT} fold(s) failed; see log above"
+    exit 1
+  fi
+  echo "[fpca_job] All folds complete for ${SLUG}/seed=${SEED}"
+else
+  run_one_fold "${FOLD_ENV}" "${FOLD_YEAR}" "${OUT_DIR}" || exit 1
+fi

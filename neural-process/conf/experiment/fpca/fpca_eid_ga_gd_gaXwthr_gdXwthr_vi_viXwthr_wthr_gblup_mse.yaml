@@ -1,0 +1,21 @@
+# @package _global_
+#
+# Frequentist-twin composer for
+# fpca_eid_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_gblup_mse (weather-GxE at K=5
+# VI FPCs + K=1 weather FPC — REML/BLUP via sommer instead of BGLR's
+# Gibbs sampler). Identical kernel stack + subsets to the bglr composer;
+# only the model fragment's regressor differs, so this pairs directly
+# against fpca_eid_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_bglr_mse.
+defaults:
+  - /optim: none
+  - /data: g2f
+  - /model/fpca: fpca_eid_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_gblup_mse
+  # The R reference's weather-GxE uses NGRDI as the single VI and PTR as the single
+  # weather variable. Hardcoded here so the composer intrinsically
+  # reproduces the R reference without relying on submit-script env overrides —
+  # running with the wrong subset is a silent bug (37 VIs × 5 FPCs =
+  # 185 phenomic cols instead of 1 × 5).
+  - /vi_subset: ngrdi
+  - /weather_subset: ptr
+  - /axis: shared_t-dap
+  - _self_

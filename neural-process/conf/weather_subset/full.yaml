@@ -1,0 +1,15 @@
+# @package _global_
+#
+# Full weather universe — every non-metadata column in the weather CSV
+# (~42 vars). Default group selection. Intentionally empty of
+# processor-value overrides: each model fragment (or
+# `data/g2f.yaml` default) owns the weather-consuming processors'
+# variable-subset keys — `weather_vars` on enviromic / weather_concat /
+# raw_weather, and `emit_vars` on weather_fpca (whose `fit_vars` is a
+# separate compute-scope knob). The non-default group `ptr.yaml` clobbers
+# all four; this one preserves whatever the model set.
+#
+# `wthr_chan` is the weather-encoder channel-subset piece, interpolated into
+# the `wthr.c=` token of `model_name`. `full` = the whole weather universe.
+
+wthr_chan: full

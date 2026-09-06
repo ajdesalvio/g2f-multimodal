@@ -1,0 +1,13 @@
+# @package _global_
+#
+# Full VI universe — every vegetation index in the dataset (37 VIs).
+# Default group selection. Intentionally empty of processor-value
+# overrides: the model fragment (or `data/g2f.yaml` default) owns
+# `dataset.processing.vi_fpca.vi_subset`. The non-default group
+# `ngrdi.yaml` clobbers that value; this one preserves it.
+#
+# `vi_chan` is the VI-encoder channel-subset piece, interpolated into the
+# `vi.c=` token of `model_name` so artifacts and W&B run names stay
+# collision-safe across subset choices. `full` = the whole VI universe.
+
+vi_chan: full

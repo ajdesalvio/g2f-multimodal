@@ -1,0 +1,14 @@
+# @package _global_
+#
+# No-op optimization group for non-DL (FPCA/BGLR/GBLUP/sklearn) experiments.
+#
+# `/optim: default` is the DL *training schedule* (AdamW optimizer, LR scheduler,
+# sched_name, and the `hp_tag` slug suffix). BGLR/FPCA runs use none of those —
+# their fit is configured under `regressor` / `model/fpca` and driven by
+# `baselines.fpca_train` (not train.py/run.py/setup.py). Pulling `/optim: default`
+# would only leak the DL `_sched=…_wd=…` suffix into FPCA slugs.
+#
+# Selecting `/optim: none` keeps the structural `/optim` slot uniform with the DL
+# experiments while supplying nothing — so `hp_tag` is undefined and
+# `model_slug = ${model_name}${oc.select:hp_tag,""}${oc.select:eval_tag,""}${oc.select:wa_tag,""}`
+# resolves with no suffix for FPCA. Intentionally empty.

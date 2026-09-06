@@ -1,0 +1,28 @@
+# @package _global_
+# `axis=dl_t-dap_c-dap` (DL set-encoders): native DAP time axis, with DAP ALSO
+# injected as a feature channel of the main VI view (channels:[vi.*, dap]).
+#
+# DAP therefore enters the set encoder twice: as the coordinate
+# (via `coords:[dap]`) AND as a feature value
+# (embedded by `y_encoder` like any other channel). This makes absolute
+# developmental time available to the pooled representation, not only as
+# relative position — placing the scaling/feature decision in the data pipeline
+# (the View), not the model.
+#
+# `axis_source` stays OFF (dap is native — always present, no derived axis to
+# attach). `_inject_view_dims` assembles the main view at setup and widens
+# `params.y_dim` to include the dap channel automatically, so `y_encoder.in_dim`
+# matches without any hardcoded count. The dap channel carries the SAME
+# (z-scored, `normalize.dap: true`) values used for the coordinate.
+dataset:
+  processing:
+    axis_source:
+      enabled: false
+  views:
+    main:
+      coords: [dap]
+      channels: ["vi.*", dap]
+
+# DAP time axis; DAP appended as an extra VI channel → `vi.t=dap.c=<chan>+dap`.
+vi_time: dap
+vi_aug: +dap

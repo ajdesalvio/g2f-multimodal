@@ -1,0 +1,71 @@
+# Lmod module stack loaded on HPRC Grace for all production jobs.
+# Source: `module list` after loading the stack in scripts/jobs/cv/env_year_loo/*.job.
+# Captured 2026-04-13; re-verified against the live login-node stack 2026-08-19.
+
+GCCcore/13.2.0
+zlib/1.2.13
+binutils/2.40
+GCC/13.2.0
+bzip2/1.0.8
+ncurses/6.4
+libreadline/8.2
+Tcl/8.6.13
+SQLite/3.43.1
+XZ/5.4.4
+libffi/3.4.4
+OpenSSL/1.1
+Python/3.11.5
+WebProxy/0000
+OpenBLAS/0.3.24
+FlexiBLAS/3.3.1
+FFTW/3.3.10
+expat/2.5.0
+libpng/1.6.40
+Brotli/1.1.0
+freetype/2.13.2
+util-linux/2.39
+fontconfig/2.14.2
+xorg-macros/1.20.0
+libpciaccess/0.17
+X11/20231019
+gzip/1.13
+lz4/1.9.4
+zstd/1.5.5
+libdrm/2.4.117
+libglvnd/1.7.0
+libunwind/1.6.2
+LLVM/16.0.6
+libxml2/2.11.5
+Wayland/1.22.0
+Mesa/23.1.9
+libGLU/9.0.3
+pixman/0.42.2
+libiconv/1.17
+gettext/0.22
+Perl/5.38.0
+git/2.42.0
+PCRE2/10.42
+GLib/2.78.1
+cairo/1.18.0
+NASM/2.16.01
+libjpeg-turbo/3.0.1
+jbigkit/2.1
+libdeflate/1.19
+LibTIFF/4.6.0
+Java/11.0.2
+libgit2/1.7.2
+cURL/8.3.0
+Tk/8.6.13
+ICU/74.1
+HarfBuzz/8.2.2
+FriBidi/1.0.13
+R/4.4.1
+
+# The modules we actually load explicitly in job scripts are:
+#   module purge
+#   module load GCC/13.2.0
+#   module load Python/3.11.5
+#   module load WebProxy/0000
+#   module load git/2.42.0
+#   module load R/4.4.1
+# Lmod pulls in the rest as transitive dependencies.

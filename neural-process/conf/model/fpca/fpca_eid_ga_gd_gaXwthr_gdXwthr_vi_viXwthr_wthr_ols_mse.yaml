@@ -1,0 +1,124 @@
+# @package _global_
+# Inductive weather-GxE — OLS over the SAME eigen-projected kernel stack as
+# the bglr/gblup weather-GxE twins (K_A, K_D, K_P, K_W + the three Hadamard
+# interactions + env one-hot). Inductive adaptations: fit_scope=train
+# (leakage-safe eigenbasis), n_components_max (bounded feature width —
+# especially important for OLS, which is undetermined if p approaches n),
+# per-sample eigen-features via _collect_xy, no env_brr_key.
+# OLS has no capacity to learn interactions on its own, so the explicit
+# Hadamard interaction blocks (gxwa/gxwd/pxw) are what give it any G×E.
+
+model_name: fpca_eid_ga.rank=100.uc_gaXwthr.rank=50_gd.rank=100.uc_gdXwthr.rank=50_vi.t=${vi_time}.c=${vi_chan}${vi_aug}.k=5.s=wez.rank=50.uc_viXwthr.rank=50_wthr.t=${wthr_time}.c=${wthr_chan}${wthr_aug}.k=1.s=gz.rank=5.uc_ols_loss=mse
+
+dataset:
+  processing:
+    metadata_features:
+      enabled: true
+      sources:
+        - name: env_onehot
+          column: Env.Year
+    vi_fpca:
+      enabled: true
+      n_components: 5
+    genomic:
+      enabled: true
+      # GRM recompute is ~1 min; the cache entry embeds the full 1180 x 238k
+      # dosage matrix (~2 GB per key). Don't persist in train-only CV runs.
+      persist_cache: false
+      csv_path: ./dataset-files/g2f/G2F_2020_2021_Genomic_Data.csv
+      center_kernel: false
+      fit_scope: train
+      sources:
+        - name: genomic_add
+          type: additive_grm
+          n_components_max: 100
+        - name: genomic_dom
+          type: dominance_grm
+          n_components_max: 100
+    phenomic:
+      enabled: true
+      # N x N derived kernel; only read back in predict mode. Don't write
+      # ~1-2 GB per split to .cache in train-only CV runs (quota).
+      persist_cache: false
+      kernel: linear
+      gamma: null
+      center_kernel: false
+      fit_scope: train
+      sources:
+        - name: phenomic_relmat
+          type: phenomic_relmat
+          scaling: within_env_zscore
+          n_components_max: 50
+    weather_fpca:
+      enabled: true
+      csv_path: ./dataset-files/g2f/EnvRtype_Weather_Data_Cleaned_V2.csv
+      n_components: 1
+      # fit_vars is intentionally unset (DAP convention, matching the
+      # bglr/gblup weather-GxE DAP twins), so FPCA is fit on all ~42
+      # weather CSV columns. On a cold cache this single step can take
+      # 20+ min; override `dataset.processing.weather_fpca.fit_vars=[PTR]`
+      # on the CLI — by per-variable FPCA independence the emitted PTR
+      # scores are bit-identical, it just skips the 41 unused fdapace fits.
+      emit_vars:
+        - PTR
+      scaling: none
+    weather_kernel:
+      enabled: true
+      # N x N derived kernel; only read back in predict mode. Don't write
+      # ~1-2 GB per split to .cache in train-only CV runs (quota).
+      persist_cache: false
+      center_kernel: false
+      fit_scope: train
+      sources:
+        - name: weather_relmat
+          type: weather_relmat
+          scaling: global_zscore
+          n_components_max: 5
+    interaction:
+      enabled: true
+      # N x N derived kernel; only read back in predict mode. Don't write
+      # ~1-2 GB per split to .cache in train-only CV runs (quota).
+      persist_cache: false
+      center_kernel: false
+      sources:
+        - name: gxwa
+          type: interaction_relmat
+          components: [genomic_add, weather_relmat]
+          fit_scope: train
+          n_components_max: 50
+        - name: gxwd
+          type: interaction_relmat
+          components: [genomic_dom, weather_relmat]
+          fit_scope: train
+          n_components_max: 50
+        - name: pxw
+          type: interaction_relmat
+          components: [phenomic_relmat, weather_relmat]
+          fit_scope: train
+          n_components_max: 50
+
+regressor:
+  name: ols
+  loss_name: mse
+  feature_keys:
+    - genomic_add
+    - genomic_dom
+    - phenomic_relmat
+    - weather_relmat
+    - gxwa
+    - gxwd
+    - pxw
+    - env_onehot
+misc:
+  wandb_logging_enabled: false
+  wandb_group: ${model_name}
+  wandb_tags:
+    - ${model_name}
+    - "seed=${misc.seed}"
+    - ols
+    - inductive
+    - modality-ablation
+    - r-analog-weather-gxe
+    - interaction
+    - vi_K=5
+    - weather_K=1

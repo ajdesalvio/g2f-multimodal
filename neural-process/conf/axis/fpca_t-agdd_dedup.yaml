@@ -1,0 +1,17 @@
+# @package _global_
+# `axis=fpca_t-agdd_dedup`: VI-FPCA over AGDD with the per-curve `dedup` transform
+# (collapse rows sharing a rounded AGDD before fdapace). Per-sample CURVE
+# dedup — distinct from the env-level axis dedup. Scenario: "AGDD only, dedup".
+dataset:
+  processing:
+    axis_source:
+      enabled: true
+    vi_fpca:
+      axis: agdd
+      transform: dedup
+      transform_args:
+        key: agdd
+
+# AGDD time axis with per-curve dedup transform → `vi.t=agdd-dedup`.
+vi_time: agdd-dedup
+vi_aug: ""

@@ -1,0 +1,163 @@
+# @package _global_
+# R-analog weather-GxE — K=5 VI FPCs + K=1 weather FPC (PTR).
+#   BGLR: RKHS(K_A)+RKHS(K_D)+RKHS(KP)+RKHS(KE_W)+RKHS(KG_GE_AW)
+#         +RKHS(KG_GE_DW)+RKHS(KP_PW)+BRR(Z_e)
+# Key reproduction choices:
+#   - vi.k=5: vi_fpca.n_components=5 (phenomic KP + KP_PW inherit it).
+#   - wthr.k=1: K=1 weather FPC on PTR (V2 curves), TRAIN-only z-score
+#     → rank-1 K_W. K=1 (not K=6 on V3) reproduces the R reference's results.
+#   - _uc: genomic K_A/K_D enter BGLR uncentered (the R reference's recipe).
+
+# Unified slug grammar (alpha-sorted peers). `vi` carries its phenomic kernel
+# facets (k/s/rank/uc) + its time/channel from the groups; `wthr` is the raw
+# weather sparse-FPCA encoder (was `wf`) carrying its kernel facets + groups;
+# `gaXwthr`/`gdXwthr`/`viXwthr` are the weather-relmat interactions (was
+# `gxwa`/`gxwd`/`pxw`). The filename is a facet-free peer mnemonic; `model_name`
+# below adds the facets + group-driven vi.t/vi.c/wthr.t/wthr.c tokens.
+model_name: fpca_eid_ga.rank=full.uc_gaXwthr.rank=full_gd.rank=full.uc_gdXwthr.rank=full_vi.t=${vi_time}.c=${vi_chan}${vi_aug}.k=${dataset.processing.vi_fpca.n_components}.s=wez.rank=full.uc_viXwthr.rank=full_wthr.t=${wthr_time}.c=${wthr_chan}${wthr_aug}.k=1.s=gz.rank=full.uc_bglr_loss=mse
+
+dataset:
+  processing:
+    metadata_features:
+      enabled: true
+      sources:
+        - name: env_onehot
+          column: Env.Year
+    vi_fpca:
+      enabled: true
+      n_components: 5
+    genomic:
+      enabled: true
+      # GRM recompute is ~1 min; the cache entry embeds the full 1180 x 238k
+      # dosage matrix (~2 GB per key). Don't persist in train-only CV runs.
+      persist_cache: false
+      csv_path: ./dataset-files/g2f/G2F_2020_2021_Genomic_Data.csv
+      center_kernel: false
+      sources:
+        - name: genomic_add
+          type: additive_grm
+        - name: genomic_dom
+          type: dominance_grm
+    phenomic:
+      enabled: true
+      # N x N derived kernel; only read back in predict mode. Don't write
+      # ~1-2 GB per split to .cache in train-only CV runs (quota).
+      persist_cache: false
+      kernel: linear
+      gamma: null
+      center_kernel: false
+      # K_P eigenbasis pools ALL envs: the kernel handed to the
+      # transductive regressor spans train+test rows jointly (test
+      # yields are masked in the fit — reference parity; the raw_kernel
+      # path requires fit_scope: all). The VI FPCA basis upstream is
+      # still train-only (basis-inductive policy).
+      fit_scope: all
+      sources:
+        - name: phenomic_relmat
+          type: phenomic_relmat
+          scaling: within_env_zscore
+    weather_fpca:
+      enabled: true
+      csv_path: ./dataset-files/g2f/EnvRtype_Weather_Data_Cleaned_V2.csv
+      n_components: 1
+      # emit/slice set (post-load) — only PTR scores reach the kernel.
+      # The fit set defaults to all CSV columns here (axis-agnostic
+      # config; cheap on DAP). The expensive AGDD axis restricts the fit
+      # via `fit_vars: [PTR]` in the t-agdd experiment overlay.
+      emit_vars:
+        - PTR
+      # fit_scope defaults to 'train' — at deployment for a future
+      # year we don't have the test env's weather, so the FPCA basis
+      # must be fit on train envs only. Held-out env's curves are
+      # CE/BLUP-projected onto the train basis at transform time.
+      #
+      # scaling: none — the FPC scores enter the weather_kernel layer
+      # unscaled; that layer applies the single column-wise z-score at
+      # K_W construction time (scaling=global_zscore below). Setting
+      # scaling=global_zscore *here* too would compose two z-scores and
+      # distort K_W (shrinking weather_relmat's BGLR variance to ~0), so
+      # keep it none and let the kernel layer own the normalization.
+      scaling: none
+    weather_kernel:
+      enabled: true
+      # N x N derived kernel; only read back in predict mode. Don't write
+      # ~1-2 GB per split to .cache in train-only CV runs (quota).
+      persist_cache: false
+      center_kernel: false
+      # K_W eigenbasis pools all 19 envs (BGLR-transductive-safe; matches
+      # the R reference's full-N K_E_W). fit_scope governs ONLY the
+      # eigenbasis pooling. The global_zscore normalization of the FPC
+      # scores below is computed from the 18 TRAIN envs only — never the
+      # held-out env, so it can't leak test info. This matches the R
+      # reference: scale_weather_score_matrix standardizes LOEO scores
+      # over the 18 training envs, and over all 19 only in the non-LOEO
+      # regime — where the train set IS all 19.
+      fit_scope: all
+      sources:
+        - name: weather_relmat
+          type: weather_relmat
+          scaling: global_zscore
+    interaction:
+      enabled: true
+      # N x N derived kernel; only read back in predict mode. Don't write
+      # ~1-2 GB per split to .cache in train-only CV runs (quota).
+      persist_cache: false
+      center_kernel: false
+      # All three Hadamard interactions (KG_GE_AW / KG_GE_DW / KP_PW)
+      # are transductive kernels over all rows (fit_scope: all — the
+      # raw_kernel path requires it; reference parity). The upstream
+      # FPCA bases (vi_fpca, weather_fpca) remain train-only.
+      sources:
+        - name: gxwa
+          type: interaction_relmat
+          components: [genomic_add, weather_relmat]
+          fit_scope: all
+        - name: gxwd
+          type: interaction_relmat
+          components: [genomic_dom, weather_relmat]
+          fit_scope: all
+        - name: pxw
+          type: interaction_relmat
+          components: [phenomic_relmat, weather_relmat]
+          fit_scope: all
+
+regressor:
+  name: bglr
+  loss_name: mse
+  n_iter: 10000
+  burn_in: 1000
+  # ETA order matches the R reference's weather-GxE
+  # (DAP_LOEO_Prediction_Setup_V3.R:294):
+  #   c("KG_G_A", "KG_G_D", "KP", "KE_W", "KG_GE_AW", "KG_GE_DW",
+  #     "KP_PW", "Ze")
+  # The R reference places K_P and K_E_W (the main-effect kernels for phenomic /
+  # weather) BEFORE the Hadamard interactions. Mirror that exactly so
+  # BGLR's per-ETA-component Gibbs draws sit in the same order across
+  # the two pipelines.
+  feature_keys:
+    - genomic_add
+    - genomic_dom
+    - phenomic_relmat
+    - weather_relmat
+    - gxwa
+    - gxwd
+    - pxw
+    - env_onehot
+  env_brr_key: env_onehot
+misc:
+  # FPCA baselines emit a single test scalar per fold via metrics.json;
+  # the wandb side-channel adds nothing the LOO aggregator can't read
+  # from disk and trips on long-slug tag rejection (>64 chars). Disable
+  # for fpca; flip to true if you need run-tracking.
+  wandb_logging_enabled: false
+  wandb_group: ${model_name}
+  wandb_tags:
+    - ${model_name}
+    - "seed=${misc.seed}"
+    - bglr
+    - r-mirror
+    - modality-ablation
+    - r-analog-weather-gxe
+    - interaction
+    - vi_K=5
+    - weather_K=1

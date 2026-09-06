@@ -1,0 +1,34 @@
+# @package _global_
+#
+# NGRDI-only VI subset — matches the R reference's env-GxE/weather-GxE LOEO setup
+# (`FPC_Scores_BLUEs_{DAP,AGDD}_LOEO_Projected.csv` from the V2 bundle
+# both contain FPC scores for NGRDI only). Pulled via
+# `vi_subset=ngrdi` on the CLI; pairs with `weather_subset=ptr` for the
+# full env-GxE/weather-GxE reproduction.
+#
+# Sets the subset on BOTH VI consumers so one group drives FPCA and DL
+# (mirrors how `weather_subset/ptr.yaml` sets the variable subset on every
+# weather processor at once — `weather_vars` on most, `fit_vars`/`emit_vars`
+# on weather_fpca):
+#   - vi_fpca.fit_vars  → FPCA COMPUTE set (R only fits these VIs; the
+#                         channels are column-sliced before the fdapace fit)
+#   - vi_fpca.vi_subset → FPCA EMIT set (post-load slice; ⊆ fit_vars)
+#   - raw_vi.vi_subset  → DL models (slice of the raw VI set-encoder input)
+# Each model enables only the relevant processor, so the other keys are
+# inert. y-dims are auto-injected from the data (setup._inject_set_encoder_ydims),
+# so this group never carries params.y_dim — which would break FPCA.
+#
+# fit_vars vs vi_subset: previously only vi_subset was set, so R fit FPCA on
+# all ~37 VIs and we sliced NGRDI out afterward — wasting ~36 fits. Setting
+# fit_vars restricts the compute to NGRDI. Per-VI FPCA independence makes
+# this bit-identical to the old fit-all-then-slice output, just ~37× faster.
+
+dataset:
+  processing:
+    vi_fpca:
+      fit_vars: [NGRDI]
+      vi_subset: [NGRDI]
+    raw_vi:
+      vi_subset: [NGRDI]
+
+vi_chan: ngrdi

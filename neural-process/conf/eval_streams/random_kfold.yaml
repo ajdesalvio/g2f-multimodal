@@ -1,0 +1,25 @@
+# @package _global_
+#
+# random_kfold eval-stream bundle — compose with
+# `+cv_spec=random_kfold +eval_streams=random_kfold`. NB: the `+` prefix is
+# required — `eval_streams` is not in any defaults list.
+#
+# OBSERVE-ONLY: a single `test` probe over the held-out fold (the PREDICT
+# rows), tracked every epoch in training_curve.jsonl. There is deliberately
+# NO `val` carve — this regime trains to the last epoch (no early stopping),
+# so nothing consumes a monitor val stream. The VALIDATE gate
+# (`setup._validate_eval_streams`) permits a carve-less bundle only when no
+# monitor consumer is active, so the curve-track job MUST also disable
+# best-checkpoint + early stopping (`misc.checkpointing.best.enabled=false`,
+# `misc.early_stopping.enabled=false`) and use a constant (non-plateau) LR.
+# eval.py then scores the final `last.ckpt`.
+#
+# Self-contained: the bundle declares the FULL stream list (Hydra REPLACES a
+# list when redefined — it does not element-merge).
+dataset:
+  eval_streams:
+    - name: test                # held-out fold (PREDICT rows), observe-only
+      source: observe
+      selector: { name: role, role: PREDICT }
+      monitor: false
+      metrics: [rmse, pearson_r, spearman_r, loglik]

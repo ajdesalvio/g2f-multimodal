@@ -1,0 +1,87 @@
+# @package _global_
+# R-analog G+P main-effects — K=5 VI FPCs, pure main effects (NO GxE, NO env).
+#   BGLR: RKHS(K_A)+RKHS(K_D)+RKHS(KP)
+# The env-identity-free / GxE-free reduction of env-GxE
+# (fpca_eid_ga_gd_gaXeid_gdXeid_vi_viXeid_bglr_mse): drops the env_onehot main
+# effect (BRR Z_e) and the three GxE interaction kernels (KG_GE_A, KG_GE_D,
+# KP_PE). Feature content = genomic additive + dominance + VI phenomic, which
+# matches the weather-free DL `vi_ga_gd` trio exactly — the like-for-like
+# baseline for the random_kfold (in-distribution) capacity comparison: same
+# inputs, kernel-BGLR vs DL set-encoder architecture.
+# Key choices (inherited from env-GxE):
+#   - vi.k=5: vi_fpca.n_components=5 (phenomic KP inherits it).
+#   - _uc: genomic K_A/K_D enter BGLR uncentered (the R reference's recipe).
+
+# Unified slug grammar (alpha-sorted peers; vi carries its time/channel from
+# the axis/vi_subset groups + its phenomic kernel facets k/s/rank/uc). No `eid`
+# peers (no env-identity GxE). The filename is a facet-free peer mnemonic;
+# `model_name` below adds the facets + the group-driven vi.t/vi.c tokens, so
+# filename != resolved slug.
+model_name: fpca_ga.rank=full.uc_gd.rank=full.uc_vi.t=${vi_time}.c=${vi_chan}${vi_aug}.k=5.s=wez.rank=full.uc_bglr_loss=mse
+
+dataset:
+  processing:
+    vi_fpca:
+      enabled: true
+      n_components: 5
+    genomic:
+      enabled: true
+      # GRM recompute is ~1 min; the cache entry embeds the full 1180 x 238k
+      # dosage matrix (~2 GB per key). Don't persist in train-only CV runs.
+      persist_cache: false
+      csv_path: ./dataset-files/g2f/G2F_2020_2021_Genomic_Data.csv
+      center_kernel: false
+      sources:
+        - name: genomic_add
+          type: additive_grm
+        - name: genomic_dom
+          type: dominance_grm
+    phenomic:
+      enabled: true
+      # N x N derived kernel; only read back in predict mode. Don't write
+      # ~1-2 GB per split to .cache in train-only CV runs (quota).
+      persist_cache: false
+      kernel: linear
+      gamma: null
+      center_kernel: false
+      # K_P eigenbasis pools ALL envs: the kernel handed to the
+      # transductive regressor spans train+test rows jointly (test
+      # yields are masked in the fit — reference parity; the raw_kernel
+      # path requires fit_scope: all). The VI FPCA basis upstream is
+      # still train-only (basis-inductive policy).
+      fit_scope: all
+      sources:
+        - name: phenomic_relmat
+          type: phenomic_relmat
+          scaling: within_env_zscore
+
+regressor:
+  name: bglr
+  loss_name: mse
+  n_iter: 10000
+  burn_in: 1000
+  # ETA order matches the main-effects subset of the R reference's env-GxE
+  # (DAP_LOEO_Prediction_Setup_V3.R:292):
+  #   c("KG_G_A", "KG_G_D", "KP")  — no GxE, no Ze.
+  feature_keys:
+    - genomic_add
+    - genomic_dom
+    - phenomic_relmat
+  # No env BRR term (main-effects has no env identity). Defaults to None anyway;
+  # set explicitly for legibility.
+  env_brr_key: null
+misc:
+  # FPCA baselines emit a single test scalar per fold via metrics.json;
+  # the wandb side-channel adds nothing the LOO aggregator can't read
+  # from disk and trips on long-slug tag rejection (>64 chars). Disable
+  # for fpca; flip to true if you need run-tracking.
+  wandb_logging_enabled: false
+  wandb_group: ${model_name}
+  wandb_tags:
+    - ${model_name}
+    - "seed=${misc.seed}"
+    - bglr
+    - r-mirror
+    - modality-ablation
+    - r-analog-main-effects
+    - vi_K=5

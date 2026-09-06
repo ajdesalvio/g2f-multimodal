@@ -1,0 +1,14 @@
+# @package _global_
+#
+# Env-FREE weather-GxE composer — identical to the weather-GxE weather-interaction FPCA but
+# drops the environment one-hot (BRR Z_e). The legitimate cv_0_00 weather-FPCA
+# baseline (no illegitimate env term); the honest counterpart for the TNP.
+# See conf/model/fpca/fpca_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_bglr_mse.yaml.
+defaults:
+  - /optim: none
+  - /data: g2f
+  - /model/fpca: fpca_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_bglr_mse
+  - /vi_subset: ngrdi          # The R-reference weather-GxE single VI = NGRDI
+  - /weather_subset: ptr       # single weather var = PTR
+  - /axis: shared_t-dap
+  - _self_

@@ -1,0 +1,64 @@
+# @package _global_
+#
+# Rank-probe fragment (used by cv/rank_scan.py).
+#
+# Enables every kernel eigen source with n_components unset so the
+# processor fits the full filtered spectrum and feature_dims reports
+# the true per-fold effective rank. Consumed exclusively by
+# cv/rank_scan.py; NOT a training config — it intentionally lacks a
+# model/encoders block.
+#
+# Phenomic uses the same linear kernel + vi_fpca K=5 inputs as the
+# production phenomic FPCA configs (vi.k=5). Enviromic mirrors the
+# weather-derived kernel used by the same family.
+
+defaults:
+  - /optim: default
+  - /data: g2f
+  - /axis: shared_t-dap
+  - _self_
+
+dataset:
+  # Match the VI FPCA cache population strategy: FPCA production runs carve
+  # no val, so every cached (train_split, vi_fpc_scores) tuple on disk
+  # corresponds to an all-except-test train set. Empty eval_streams here
+  # means rank_scan hits the production cache on every fold instead of
+  # re-running R fdapace 19 times (and avoids the B1 carve+FPCA guardrail).
+  # The rank measured is the FPCA-path rank; a DL run with a carve sees a
+  # strictly smaller train split and therefore a rank ≤ this value — but at
+  # the K scales the rank contract cares about (<= 1000) both pipelines are bounded
+  # by the same min_fold(rank) ceiling with comfortable headroom.
+  eval_streams: []
+
+  processing:
+    vi_fpca:
+      enabled: true
+      n_components: 5
+
+    genomic:
+      enabled: true
+      sources:
+        - name: genomic_add
+          type: additive_grm
+          n_components: null
+        - name: genomic_dom
+          type: dominance_grm
+          n_components: null
+
+    phenomic:
+      enabled: true
+      kernel: linear
+      gamma: null
+      sources:
+        - name: phenomic_relmat
+          type: phenomic_relmat
+          n_components: null
+
+    enviromic:
+      enabled: true
+      fit_scope: all
+      sources:
+        - name: enviromic_linear
+          type: enviromic_relmat
+          kernel: linear
+          n_components: null

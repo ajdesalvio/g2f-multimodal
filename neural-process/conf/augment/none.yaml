@@ -1,0 +1,16 @@
+# @package _global_
+#
+# No augmentation (default). Per-modality keep-fraction is [1.0, 1.0] — a
+# structural no-op in `np_collate` (the task list passes through unchanged),
+# and the `${vi_tsub}` / `${wthr_tsub}` slug pieces stay empty so a no-aug run's
+# model_name is byte-identical to one composed without the `augment` group.
+augment:
+  vi:
+    keep_frac_range: [1.0, 1.0]
+    min_kept: 1
+  weather:
+    keep_frac_range: [1.0, 1.0]
+    min_kept: 1
+
+vi_tsub: ""
+wthr_tsub: ""

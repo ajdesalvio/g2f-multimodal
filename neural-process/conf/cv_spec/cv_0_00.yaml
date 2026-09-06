@@ -1,0 +1,24 @@
+# @package _global_
+#
+# CV_0_00 split group (D9) — one environment removed **plus** a female
+# fold; one BGLR fit → CV0 (tested lines, new env) + CV00 (untested
+# lines, new env), scored on the held-out env column only.
+#
+# Selected opt-in via `+cv_spec=cv_0_00`; the per-task identity fields
+# (`cv_seed`, `fold`, `heldout_env`) are overridden by the submit array
+# (`scripts/jobs/cv/cv_0_00_2_1/`). Presence of a root `cv_spec` block flips
+# `G2FDataset` onto the role-based split path (coverage → roles, D6),
+# so do NOT also pass `dataset.test_filter_columns`.
+#
+# `cv_seed` (R `Seed_Num`, drives the FOLD partition) is deliberately
+# distinct from `misc.seed` (BGLR `set.seed` / DL init) — conflating
+# them is a latent bug class (D9).
+cv_spec:
+  scheme: cv_0_00
+  cv_seed: 1                 # R Seed_Num — fold partition (≠ misc.seed)
+  fold: 1                    # 1..k_folds
+  heldout_env: null          # e.g. DEH1.2020 — required; set per task
+  fold_source: r_csv         # r_csv (parity) | native (new data)
+  fold_csv: ${oc.env:G2F_FEMALE_FOLDS_CSV,null}
+  k_folds: 5                 # native backend only
+  fold_validation: strict    # strict | subset (r_csv only)

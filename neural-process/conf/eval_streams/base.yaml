@@ -1,0 +1,34 @@
+# @package _global_
+#
+# Default eval-stream bundle (DL eval-streams plan): an IID `random` carve
+# (the monitor — drives early stopping + best checkpoint) plus a `test`
+# observe probe (the PREDICT rows, observe-only). Scheme-agnostic — the only
+# safe default under `env_year_loo` and the legacy filter/ratio path. To
+# realize OOD validation select a scheme-specific bundle
+# (`+eval_streams=cv_0_00` / `+eval_streams=cv_2_1`) or author one. The `+`
+# prefix is required — `eval_streams` is not in any defaults list, so a bare
+# `eval_streams=...` override raises a Hydra "no match in the defaults list"
+# error.
+#
+# Self-contained: each bundle declares the FULL stream list (Hydra REPLACES a
+# list when redefined — it does not element-merge — so list-level inheritance
+# would be a silent no-op). The shared `val_seed` is a scalar in
+# conf/data/g2f.yaml, not here.
+dataset:
+  eval_streams:
+    - name: val                 # → val_pearson_r ; drives early stop + best ckpt
+      source: carve
+      strategy: { name: random, frac: 0.1 }   # IID flat-fraction carve
+      monitor: true
+      monitor_metric: pearson_r     # PRIMARY → early stop + plateau LR + metrics.json
+      monitor_mode: max
+      # One best_<metric>.ckpt (+ best_frozen_<metric>.ckpt under freeze) per
+      # entry; modes come from the metric registry (rmse=min, others=max). Must
+      # be a subset of `metrics`. Omit → defaults to just [monitor_metric].
+      checkpoint_metrics: [pearson_r, rmse, loglik]
+      metrics: [rmse, pearson_r, spearman_r, loglik]   # REQUIRED — explicit per stream
+    - name: test                # observe-only probe over the PREDICT rows
+      source: observe
+      selector: { name: role, role: PREDICT }
+      monitor: false
+      metrics: [rmse, pearson_r, spearman_r, loglik]

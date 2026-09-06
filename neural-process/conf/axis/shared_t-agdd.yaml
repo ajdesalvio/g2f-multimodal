@@ -1,0 +1,27 @@
+# @package _global_
+# AGDD time axis (`axis=shared_t-agdd`): flips every weather/axis consumer to AGDD at
+# once — axis_source (attaches agdd), vi_fpca, weather_fpca, raw_weather,
+# enviromic. AGDD = cumsum(GDD); only fdapace's Lt changes. reference-exact
+#. weather_concat has no axis knob. Disabled processors ignore it.
+
+dataset:
+  processing:
+    axis_source:
+      enabled: true
+      # VI on the R reference's deduped dap.gdd scale + NaN-drop on collapsed DAPs
+      # (bit-exact AGDD_FPCA_Projections_LOEO_V3.R).
+      vi_dedup: true
+    vi_fpca:
+      axis: agdd
+    weather_fpca:
+      axis: agdd
+    raw_weather:
+      axis: agdd
+    enviromic:
+      axis: agdd
+
+# Both FPCA time axes flip to AGDD → `vi.t=agdd` / `wthr.t=agdd` in the slug.
+vi_time: agdd
+vi_aug: ""
+wthr_time: agdd
+wthr_aug: ""

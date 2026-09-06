@@ -1,0 +1,16 @@
+# @package _global_
+#
+# VI-only timepoint subsampling (train-only): each task keeps a random
+# fraction p_vi ~ U[0.75, 1.0] of every VI curve's timepoints (>= min_kept),
+# applied uniformly across the task's samples. Weather is left whole. The
+# `vi_tsub` slug piece renders the range so the artifact dir stays collision-safe.
+augment:
+  vi:
+    keep_frac_range: [0.75, 1.0]
+    min_kept: 5
+  weather:
+    keep_frac_range: [1.0, 1.0]
+    min_kept: 1
+
+vi_tsub: ".tsub=0.75-1.0"
+wthr_tsub: ""

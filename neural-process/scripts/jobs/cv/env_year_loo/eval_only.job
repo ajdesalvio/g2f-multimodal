@@ -1,0 +1,66 @@
+#!/bin/bash
+# =============================================================================
+# LOO CV — Eval-only job (predict-mode round-trip validation)
+# =============================================================================
+# Runs eval.py against an existing artifact dir WITHOUT re-training. Exercises
+# FeatureProcessor.load_and_transform (predict mode) against the on-disk
+# processor cache files, loads every per-metric checkpoint from checkpoints/
+# (best_<metric>.ckpt / best_frozen[_<prof>]_<metric>.ckpt / last.ckpt — a
+# metric-less best.ckpt is a hard error), evaluates on the held-out env, and
+# writes metrics_<label>.json files to OUT_DIR (metrics_last.json last).
+#
+# Variables injected via --export:
+#   FOLD_ENV / FOLD_YEAR / CONFIG / SLUG / SEED / OUT_DIR
+# =============================================================================
+
+#SBATCH --time=1:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=50G
+#SBATCH --gres=gpu:1
+#SBATCH --partition=gpu
+#SBATCH --output=scripts/jobs/cv/env_year_loo/logs/%x.txt
+
+[[ -z "${FOLD_ENV:-}" || -z "${FOLD_YEAR:-}" || -z "${CONFIG:-}" || -z "${SLUG:-}" || -z "${SEED:-}" || -z "${OUT_DIR:-}" ]] \
+  && { echo "[eval_only] ERROR: Missing required env var"; exit 1; }
+
+echo "[eval_only] Fold=${FOLD_ENV}.${FOLD_YEAR}  Config=${CONFIG}  Slug=${SLUG}  Seed=${SEED}"
+echo "[eval_only] Artifact+metrics: ${OUT_DIR}"
+
+module purge
+module load GCC/13.2.0
+module load Python/3.11.5
+module load WebProxy/0000
+module load git/2.42.0
+module load R/4.4.1
+export R_LIBS_USER=/scratch/user/$USER/neural-processes/env/r_libs
+
+ROOT_DIR="/scratch/user/$USER/neural-processes/g2f-multimodal/neural-process"
+ENV_PATH="/scratch/user/$USER/neural-processes/env/bin/activate"
+[[ -f "${ENV_PATH}" ]] || { echo "[eval_only] ERROR: venv not found"; exit 1; }
+source "${ENV_PATH}"
+
+cd "${ROOT_DIR}" || { echo "[eval_only] ERROR: cd failed"; exit 1; }
+
+# Stage wandb run dirs on node-local scratch ($TMPDIR, auto-reaped at job end)
+# so they never pile up against the /scratch inode quota;
+# the EXIT trap below still syncs to wandb.ai.
+export WANDB_DIR="${TMPDIR:-/tmp}/wandb_${SLURM_JOB_ID:-$$}"
+mkdir -p "${WANDB_DIR}"
+
+trap 'wandb sync --clean --clean-force --clean-old-hours 0' EXIT
+
+echo "[eval_only] Running eval.py (predict_mode=True) against ${OUT_DIR}..."
+# Hydra CLI shape; eval.py is now an @hydra.main shim.
+python eval.py \
+  +experiment=dl/${CONFIG} \
+  "dataset.test_filter_columns=[{Env: ${FOLD_ENV}},{Year: ${FOLD_YEAR}}]" \
+  "misc.artifacts_dir=${OUT_DIR}" \
+  "misc.metrics_dirpath=${OUT_DIR}" \
+  "misc.seed=${SEED}" \
+  "misc.fold_env=${FOLD_ENV}.${FOLD_YEAR}" \
+  "misc.wandb_logging_enabled=false" \
+  || { echo "[eval_only] ERROR: eval.py failed"; exit 1; }
+
+echo "[eval_only] Done. metrics_<label>.json files written to ${OUT_DIR} (marker: metrics_last.json)"

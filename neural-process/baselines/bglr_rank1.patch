@@ -1,0 +1,25 @@
+Patch BGLR 1.1.4 so its RKHS handler keeps a single retained eigenvector
+column as a 1-column matrix instead of letting R drop it to a plain vector.
+
+Without this, stock CRAN BGLR aborts with "invalid 'times' argument" on any
+rank-1 kernel block — e.g. weather-GxE's weather kernel K_W built from a single
+PTR weather FPC (slug wfgz1Le, weather_fpca.n_components=1). When only one
+eigenvalue survives BGLR's tolD filter, `tmp` selects one column and
+`LT$V[, tmp]` collapses to a vector, so the downstream outer product fails.
+
+Applied automatically by scripts/patch_bglr.sh; see
+baselines/R_HPC_SETUP.md ("Patch BGLR for rank-1 RKHS terms"). Apply with
+`patch -p1 -d BGLR < baselines/bglr_rank1.patch` from a freshly untarred
+BGLR_1.1.4 source tree.
+
+--- a/R/BGLR.R
++++ b/R/BGLR.R
+@@ -667,7 +667,7 @@
+     tmp= LT$d > LT$tolD
+     LT$levelsU = sum(tmp)
+     LT$d = LT$d[tmp]
+-    LT$V = LT$V[, tmp]
++    LT$V = LT$V[, tmp, drop = FALSE]
+
+     #Default degrees of freedom and scale parameter associated with the variance component for marker effect
+     if (is.null(LT$df0))

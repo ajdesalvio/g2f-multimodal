@@ -1,0 +1,27 @@
+# @package _global_
+# Env-FREE weather-GxE composer over the AGDD time axis — the AGDD twin of
+# fpca_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_bglr_mse (no env one-hot / BRR Z_e).
+# Same model; `/axis: shared_t-agdd` swaps BOTH vi_fpca and weather_fpca to
+# AGDD and tags the per-encoder time tokens `vi.t=agdd` / `wthr.t=agdd`.
+# Mirrors the eid AGDD overlay
+# (fpca_eid_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_bglr_mse__t-agdd.yaml).
+defaults:
+  - /optim: none
+  - /data: g2f
+  - /model/fpca: fpca_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_bglr_mse
+  - /vi_subset: ngrdi          # The R-reference weather-GxE single VI = NGRDI
+  - /weather_subset: ptr       # single weather var = PTR
+  - /axis: shared_t-agdd
+  - _self_
+
+dataset:
+  processing:
+    # The R reference retains 7 NGRDI FPCs on the AGDD axis (5 on DAP). The
+    # weather kernel stays at K=1 (PTR FPC1) on both axes.
+    vi_fpca:
+      n_components: 7
+    # Weather FPCA on the AGDD axis is per-variable expensive; restrict the FIT
+    # to the only emitted variable (PTR). Bit-identical to the full fit sliced
+    # to PTR.
+    weather_fpca:
+      fit_vars: [PTR]

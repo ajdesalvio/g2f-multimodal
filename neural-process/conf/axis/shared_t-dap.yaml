@@ -1,0 +1,19 @@
+# @package _global_
+# DAP time axis (`axis=shared_t-dap`, default): native days-after-plant, no derived
+# axis. Explicit (not empty) so it resets every knob when switching back from
+# agdd. The time/aug pieces are the baseline (dap, no augmentation) so slugs
+# read `vi.t=dap.c=<chan>` (cf. vi_subset=full).
+
+dataset:
+  processing:
+    axis_source:
+      enabled: false
+    vi_fpca:
+      axis: dap
+    weather_fpca:
+      axis: dap
+
+vi_time: dap
+vi_aug: ""
+wthr_time: dap
+wthr_aug: ""

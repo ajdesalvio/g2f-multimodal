@@ -1,0 +1,24 @@
+# @package _global_
+#
+# WEATHER-FREE variant of the cv_0_00 TNP: induced-set (pseudo-token) cross-sample
+# encoder over raw VI + genomic additive (K_A) and dominance (K_D) GRM rows, with
+# the weather modality dropped (no weather sub-encoder, no wthr augmentation).
+# The like-for-like weather-free peer of
+# istnp_vi_wthr_ga_gd__grm-rows__vienc-tfm__wthrenc-tfm__aug-vi-wthr__nll, and the
+# DL analog of R BGLR G+P main-effects.
+# See conf/model/dl/istnp_vi_ga_gd__grm-rows__vienc-tfm__nll.yaml.
+defaults:
+  - /optim: default
+  - /data: g2f
+  - /model/dl: istnp_vi_ga_gd__grm-rows__vienc-tfm__nll
+  - /vi_subset: full
+  - /weather_subset: full
+  - /axis: shared_t-dap          # VI time axis = native DAP (weather view dropped when its processor is absent)
+  - /augment: vi-tsub            # VI keep U[0.75,1.0]; no weather augmentation
+  - _self_
+
+# NP epochs pinned here for visibility (base.yaml also defaults to 250);
+# submit_cv.sh's neural_process block passes the same value. W&B project is left
+# to the job: dl_job.job overrides misc.project to G2F-NP-<scheme> at submit.
+misc:
+  epochs: 250

@@ -1,0 +1,30 @@
+# @package _global_
+#
+# random_kfold split group — plain per-ROW random k-fold over ALL rows.
+#
+# The in-distribution baseline: the held-out fold is a uniform random
+# sample of every row (no common-female grouping, no environment masking),
+# so train and test are drawn from the SAME distribution. Use it to probe a
+# model's raw capacity, free of the out-of-distribution penalty cv_2_1 /
+# cv_0_00 / env_year_loo impose.
+#
+# Selected opt-in via `+cv_spec=random_kfold`; `cv_seed` / `fold` are
+# overridden by the submit array. No
+# `heldout_env` (no env is removed). The per-row partition is seeded by
+# `cv_seed` and split into `k_folds` balanced folds in
+# `cv.schemes.random_kfold` — it does NOT read a maternal-line fold_map, so
+# `fold_source` / `fold_csv` / `fold_validation` are unused (kept for shape
+# symmetry with the female-keyed schemes).
+#
+# `cv_seed` (seeds the row partition) is deliberately distinct from
+# `misc.seed` (DL weight init / batch order) — conflating them is a latent
+# bug class (D9).
+cv_spec:
+  scheme: random_kfold
+  cv_seed: 1                 # seeds the per-row fold partition (≠ misc.seed)
+  fold: 1                    # 1..k_folds — the held-out (test) fold
+  heldout_env: null          # not applicable (no environment removed)
+  fold_source: native        # unused (per-row partition is always native)
+  fold_csv: null             # unused
+  k_folds: 5                 # number of per-row folds
+  fold_validation: strict    # unused

@@ -1,0 +1,21 @@
+# @package _global_
+#
+# CV_2_1 split group (D9) — no environment removed; one fold of common
+# females held out across all envs. One BGLR fit → CV2 (tested lines,
+# in-sample over the retained FIT rows) + CV1 (untested lines, held-out
+# fold). Weather regime is `ALL` (every env keeps FIT rows, D4).
+#
+# Selected opt-in via `+cv_spec=cv_2_1`; `cv_seed` / `fold` are
+# overridden by the submit array (`scripts/jobs/cv/cv_0_00_2_1/`). No
+# `heldout_env` (the scheme removes no column). Presence of a root
+# `cv_spec` block flips `G2FDataset` onto the role-based split path, so
+# do NOT also pass `dataset.test_filter_columns`.
+cv_spec:
+  scheme: cv_2_1
+  cv_seed: 1                 # R Seed_Num — fold partition (≠ misc.seed)
+  fold: 1                    # 1..k_folds
+  heldout_env: null          # not applicable to cv_2_1
+  fold_source: r_csv         # r_csv (parity) | native (new data)
+  fold_csv: ${oc.env:G2F_FEMALE_FOLDS_CSV,null}
+  k_folds: 5                 # native backend only
+  fold_validation: strict    # strict | subset (r_csv only)

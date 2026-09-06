@@ -1,0 +1,14 @@
+# @package _global_
+# The R-reference G+P main-effects over the AGDD time axis — the AGDD twin of
+# fpca_ga_gd_vi_bglr_mse.
+# Same model; `/axis: shared_t-agdd` swaps the fdapace time coordinate DAP→AGDD
+# (VI on the deduped dap.gdd scale + NaN-drop of collapsed DAPs, vi_dedup) and
+# tags the per-encoder time token `vi.t=agdd`.
+defaults:
+  - /optim: none
+  - /data: g2f
+  - /model/fpca: fpca_ga_gd_vi_bglr_mse
+  - /vi_subset: ngrdi
+  - /weather_subset: ptr
+  - /axis: shared_t-agdd
+  - _self_

@@ -1,0 +1,14 @@
+# @package _global_
+# `axis=dl_t-dap-agdd` (DL only): main view carries BOTH dap and agdd coords
+# (D=2; _inject_view_dims sets params.x_dim=2). FPCA path stays single-coord.
+dataset:
+  processing:
+    axis_source:
+      enabled: true
+  views:
+    main:
+      coords: [dap, agdd]
+
+# VI time axis is 2-D (dap+agdd coords) → `vi.t=dap+agdd`. Weather untouched.
+vi_time: dap+agdd
+vi_aug: ""

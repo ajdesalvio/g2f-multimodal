@@ -1,0 +1,22 @@
+# @package _global_
+#
+# env_year_loo as a first-class scheme (D9) — the degenerate one-label
+# case: an entire environment column is masked with no female-fold
+# structure, blending CV0/CV00 into a single `"test"` label. No OBSERVE
+# rows ⇒ `fit_mask is None` ⇒ engine behaviour byte-identical to the
+# legacy `test_filter_columns` path (the weather-GxE LOEO regression gate, D3).
+#
+# This config-group form is the role-based equivalent of the historical
+# `dataset.test_filter_columns=[{Env: ...},{Year: ...}]` invocation; the
+# legacy path remains supported and unchanged. Select via
+# `+cv_spec=env_year_loo` and set `heldout_env` per task. `fold` /
+# `cv_seed` / `fold_csv` are unused (no female folding).
+cv_spec:
+  scheme: env_year_loo
+  cv_seed: null              # unused — no female folding
+  fold: null                 # unused
+  heldout_env: null          # e.g. DEH1.2020 — required; set per task
+  fold_source: native        # unused (no fold_map)
+  fold_csv: ${oc.env:G2F_FEMALE_FOLDS_CSV,null}
+  k_folds: 5                 # unused
+  fold_validation: strict    # unused

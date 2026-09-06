@@ -1,0 +1,24 @@
+# @package _global_
+#
+# cv_0_00 DEV TNP — induced-set (pseudo-token) cross-sample encoder, GA/GD kernel
+# rows, D64/L4, VI+weather. Weather is kept (unlike the random_kfold runs where
+# it was inert): for env×year LOO the held-out environment's weather is the main
+# descriptor that lets the pool transfer to an UNSEEN env, and every winning
+# cv_0_00 FPCA model uses weather (gaXwthr/viXwthr/wthr) — so it is the peer most
+# likely to matter here.
+# See conf/model/dl/istnp_vi_wthr_ga_gd__grm-rows__vienc-tfm__wthrenc-tfm__nll.yaml.
+defaults:
+  - /optim: default
+  - /data: g2f
+  - /model/dl: istnp_vi_wthr_ga_gd__grm-rows__vienc-tfm__wthrenc-tfm__nll
+  - /vi_subset: full
+  - /weather_subset: full
+  - /axis: shared_t-dap          # VI + weather time axis = native DAP
+  - /augment: vi-tsub_wthr-tsub  # VI keep U[0.75,1.0], weather keep U[0.5,1.0]
+  - _self_
+
+# NP epochs pinned here for visibility (base.yaml also defaults to 250);
+# submit_cv.sh's neural_process block passes the same value. W&B project is left
+# to the job: dl_job.job overrides misc.project to G2F-NP-<scheme> at submit.
+misc:
+  epochs: 250

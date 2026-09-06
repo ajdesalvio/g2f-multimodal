@@ -1,0 +1,41 @@
+# @package _global_
+# `axis=dl_t-dap-gdd-agdd` (DL): both set-encoders take gdd AND
+# agdd as extra **coordinates** alongside dap (D=3), so the time axis is the
+# 3-tuple (dap, gdd, agdd). Slug convention: coords placement renders in the
+# `.t=` time token (`vi.t=dap+gdd+agdd`); placing the same axes as **channels**
+# instead renders them in the `.c=` token — `.t=` vs `.c=` placement is the only
+# slug difference (kept here for future reference).
+#
+# - VI (`main`) view: coords:[dap, gdd, agdd] — gdd/agdd attached on the VI grid
+#   by axis_source (full-grid raw cumsum, vi_dedup=false → no NaN/dedup).
+# - weather view: coords:[weather_dap, weather_gdd, weather_agdd] — gdd/agdd on
+#   the native daily weather grid via raw_weather.extra_axes (un-deduped raw
+#   cumsum, z-scored from train envs only; same data the channel twin uses, just
+#   placed in coords).
+#
+# _inject_view_dims auto-widens params.x_dim (VI) and params.weather_x_dim
+# (weather) to 3 from the assembled views. Compose over a weather+VI model
+# (e.g. model/dl/istnp_vi_wthr_ga_gd__grm-rows__vienc-tfm__wthrenc-tfm__nll)
+# with `axis=dl_t-dap-gdd-agdd`.
+dataset:
+  processing:
+    axis_source:
+      enabled: true
+      produce: [gdd, agdd]
+      dedup: false            # DL: no deduped clean-AGDD grid needed
+      vi_dedup: false         # full-grid raw cumsum on the VI grid (no NaN)
+    raw_weather:
+      extra_axes: [gdd, agdd]
+      extra_axes_scaling: global_zscore   # train-only stats
+  views:
+    main:
+      coords: [dap, gdd, agdd]
+    weather:
+      coords: [weather_dap, weather_gdd, weather_agdd]
+
+# gdd+agdd join dap as extra coordinates on both encoders →
+# `vi.t=dap+gdd+agdd.c=<chan>` and `wthr.t=dap+gdd+agdd.c=<chan>`.
+vi_time: dap+gdd+agdd
+vi_aug: ""
+wthr_time: dap+gdd+agdd
+wthr_aug: ""

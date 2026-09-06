@@ -1,0 +1,225 @@
+#!/bin/bash
+# =============================================================================
+# LOO CV — Deep Learning fold job (GPU)
+# =============================================================================
+# Trains a DL model on all-but-one environment, then evaluates on the held-out
+# environment. Both steps run in a single allocation to avoid queue latency.
+#
+# Two modes (selected by which env vars are set):
+#
+#   MULTI-FOLD MODE (batched CV in one allocation — used by submit_fseq.sh):
+#     FOLDS         — space-separated compound fold IDs, e.g. "DEH1.2020 IAH4.2021"
+#     ARTIFACT_ROOT — base path, e.g. "artifacts/cv/env_year_loo"
+#     Each fold's per-fold OUT_DIR is built as
+#       ${ARTIFACT_ROOT}/${fold_id}/${SLUG}/seed=${SEED}
+#     and skipped if metrics_last.json already exists (idempotent).
+#
+#   SINGLE-FOLD MODE (used by submit_fpar.sh):
+#     FOLD_ENV  — held-out environment code (e.g. DEH1)
+#     FOLD_YEAR — held-out year (e.g. 2020)
+#     OUT_DIR   — artifact output path for this single fold
+#
+# Common variables (both modes):
+#   CONFIG    — model config name without .yaml (e.g. istnp_vi__vienc-tfm__aug-vi__nll)
+#   SLUG      — resolved model_name from config (e.g. istnp_L4_H4x16_D64_..._loss=nll)
+#   SEED      — random seed integer
+#
+# Optional eval-only backfill (both modes):
+#   EVAL_ONLY=1 — skip train.py, run only eval.py against the existing
+#     per-metric checkpoint (best_<metric>.ckpt, e.g. best_pearson_r.ckpt).
+#     Idempotency flips: a fold is skipped iff metrics_last.json exists AND
+#     every by_metric label block already contains spearman_r (by_metric is
+#     keyed by cv_label, not metric name). Errors out if no best_*.ckpt is present.
+#     Used to backfill the Spearman metric into older metrics.json files.
+#
+# SLURM resource directives below serve as defaults. submit_fseq.sh passes them as
+# sbatch CLI flags (--time, --mem, etc.) which override these #SBATCH values,
+# so edit resource settings in submit_fseq.sh, not here.
+#
+# train.py / eval.py are now @hydra.main shims. Overrides use bare
+# Hydra CLI syntax: `key=value` (no `--` prefix), `+experiment=dl/${CONFIG}`
+# selects the model fragment from conf/experiment/dl/. The compound fold
+# string `${FOLD_ENV}.${FOLD_YEAR}` goes to misc.fold_env unchanged; the
+# dataset's two-dict AND list takes env and year as separate entries.
+# =============================================================================
+
+#SBATCH --time=8:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=50G
+#SBATCH --gres=gpu:1
+#SBATCH --partition=gpu
+#SBATCH --output=scripts/jobs/cv/env_year_loo/logs/%x.txt
+
+# account, job-name, time, mem, gres, partition, mail-type, mail-user are all
+# passed as sbatch CLI flags in submit_fseq.sh and override the #SBATCH defaults above.
+
+# ---------------------------------------------------------------------------
+# Guard: required env vars (CONFIG, SLUG, SEED always required; the rest
+# depend on mode)
+# ---------------------------------------------------------------------------
+[[ -z "${CONFIG:-}" || -z "${SLUG:-}" || -z "${SEED:-}" ]] \
+  && { echo "[dl_job] ERROR: Missing CONFIG, SLUG, or SEED"; exit 1; }
+
+if [[ -n "${FOLDS:-}" ]]; then
+  [[ -z "${ARTIFACT_ROOT:-}" ]] \
+    && { echo "[dl_job] ERROR: Multi-fold mode requires ARTIFACT_ROOT"; exit 1; }
+  MODE="multi"
+  echo "[dl_job] MULTI-FOLD  Config=${CONFIG}  Slug=${SLUG}  Seed=${SEED}"
+  echo "[dl_job] Folds: ${FOLDS}"
+  echo "[dl_job] Artifact root: ${ARTIFACT_ROOT}"
+else
+  [[ -z "${FOLD_ENV:-}" || -z "${FOLD_YEAR:-}" || -z "${OUT_DIR:-}" ]] \
+    && { echo "[dl_job] ERROR: Single-fold mode requires FOLD_ENV, FOLD_YEAR, OUT_DIR"; exit 1; }
+  MODE="single"
+  echo "[dl_job] SINGLE-FOLD  Fold=${FOLD_ENV}.${FOLD_YEAR}  Config=${CONFIG}  Slug=${SLUG}  Seed=${SEED}"
+  echo "[dl_job] Output: ${OUT_DIR}"
+fi
+
+# ---------------------------------------------------------------------------
+# Environment setup
+# ---------------------------------------------------------------------------
+module purge
+module load GCC/13.2.0
+module load Python/3.11.5
+module load WebProxy/0000
+module load git/2.42.0
+
+# R is loaded unconditionally so DL configs that enable R-based processors
+# (vi_fpca, weather_fpca) can invoke fdapace via load_and_transform. Configs
+# without R-based processors ignore it — cost is one extra module load.
+module load R/4.4.1
+export R_LIBS_USER=/scratch/user/$USER/neural-processes/env/r_libs
+
+ROOT_DIR="/scratch/user/$USER/neural-processes/g2f-multimodal/neural-process"
+ENV_PATH="/scratch/user/$USER/neural-processes/env/bin/activate"
+
+[[ -f "${ENV_PATH}" ]] || { echo "[dl_job] ERROR: venv not found at ${ENV_PATH}"; exit 1; }
+source "${ENV_PATH}"
+
+cd "${ROOT_DIR}" || { echo "[dl_job] ERROR: Cannot cd to ${ROOT_DIR}"; exit 1; }
+
+# Stage wandb run dirs on node-local scratch ($TMPDIR, auto-reaped at job end)
+# so they never pile up against the /scratch inode quota;
+# the EXIT trap below still syncs to wandb.ai.
+export WANDB_DIR="${TMPDIR:-/tmp}/wandb_${SLURM_JOB_ID:-$$}"
+mkdir -p "${WANDB_DIR}"
+
+# Ensure wandb local data is cleaned up even if the job fails
+trap 'wandb sync --clean --clean-force --clean-old-hours 0' EXIT
+
+# Optional smoke-mode subsampling: if SMOKE_N is set in the environment,
+# pass it as a Hydra override; otherwise omit the override entirely so the
+# default (no smoke_n) applies.
+SMOKE_N_OVERRIDE=()
+if [[ -n "${SMOKE_N:-}" ]]; then
+  # `+` prefix force-adds — `dataset.smoke_n` is a G2FDataset constructor
+  # arg with no schema slot in conf/data/g2f.yaml, so struct-mode rejects
+  # a plain `dataset.smoke_n=N` override.
+  SMOKE_N_OVERRIDE=("+dataset.smoke_n=${SMOKE_N}")
+fi
+
+# ---------------------------------------------------------------------------
+# run_one_fold — runs train + eval for a single (fold_env, fold_year) pair.
+# Skips if metrics.json already exists at the given out_dir.
+# ---------------------------------------------------------------------------
+run_one_fold() {
+  local fold_env="$1"
+  local fold_year="$2"
+  local out_dir="$3"
+  local fold_id="${fold_env}.${fold_year}"
+
+  if [[ -n "${EVAL_ONLY:-}" ]]; then
+    if [[ -f "${out_dir}/metrics_last.json" ]] && python -c "
+import json, sys
+try:
+    d = json.load(open('${out_dir}/metrics_last.json'))
+    # by_metric is keyed by cv_label ('test', 'CV0', ...); spearman_r
+    # lives inside each label's block, so check every block.
+    bm = d.get('by_metric') or {}
+    sys.exit(0 if bm and all('spearman_r' in v for v in bm.values()) else 1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null; then
+      echo "[dl_job] SKIP ${fold_id} (spearman_r already present)"
+      return 0
+    fi
+    # Checkpointing writes a per-metric checkpoint (best_pearson_r.ckpt), not a
+    # bare best.ckpt — match any best_*.ckpt so eval.py has a checkpoint to load.
+    if ! compgen -G "${out_dir}/checkpoints/best_*.ckpt" > /dev/null; then
+      echo "[dl_job] ERROR: EVAL_ONLY=1 but no best_*.ckpt found at ${out_dir}/checkpoints/"
+      return 1
+    fi
+    echo "[dl_job] ---- Eval-only ${fold_id} ----"
+    python eval.py \
+      +experiment=dl/${CONFIG} \
+      "dataset.test_filter_columns=[{Env: ${fold_env}},{Year: ${fold_year}}]" \
+      "${SMOKE_N_OVERRIDE[@]}" \
+      "misc.artifacts_dir='${out_dir}'" \
+      "misc.metrics_dirpath='${out_dir}'" \
+      "misc.seed=${SEED}" \
+      "misc.fold_env=${fold_id}" \
+      || { echo "[dl_job] ERROR: eval.py failed on ${fold_id}"; return 1; }
+    echo "[dl_job] DONE ${fold_id}  metrics_<ckpt>.json → ${out_dir}/"
+    return 0
+  fi
+
+  if [[ -f "${out_dir}/metrics_last.json" ]]; then
+    echo "[dl_job] SKIP ${fold_id} (metrics_last.json exists)"
+    return 0
+  fi
+
+  # Hydra override grammar rejects bare `=` inside values and inside list
+  # literal elements. The SLUG contains `=` (loss=mse_sched=cos_wd=0.01)
+  # and `seed=${SEED}` also has `=`, so paths and tag values must be
+  # single-quoted to force Hydra to treat them as string primitives.
+  echo "[dl_job] ---- Training ${fold_id} ----"
+  python train.py \
+    +experiment=dl/${CONFIG} \
+    "dataset.test_filter_columns=[{Env: ${fold_env}},{Year: ${fold_year}}]" \
+    "${SMOKE_N_OVERRIDE[@]}" \
+    "misc.artifacts_dir='${out_dir}'" \
+    "misc.metrics_dirpath='${out_dir}'" \
+    "misc.seed=${SEED}" \
+    "misc.fold_env=${fold_id}" \
+    "misc.wandb_logging_enabled=${WANDB_LOGGING:-true}" \
+    "misc.wandb_group='loo/${SLUG}/seed=${SEED}'" \
+    "misc.wandb_tags=[loo,${CONFIG},'fold=${fold_id}','seed=${SEED}']" \
+    || { echo "[dl_job] ERROR: train.py failed on ${fold_id}"; return 1; }
+
+  echo "[dl_job] ---- Evaluating ${fold_id} ----"
+  python eval.py \
+    +experiment=dl/${CONFIG} \
+    "dataset.test_filter_columns=[{Env: ${fold_env}},{Year: ${fold_year}}]" \
+    "${SMOKE_N_OVERRIDE[@]}" \
+    "misc.artifacts_dir='${out_dir}'" \
+    "misc.metrics_dirpath='${out_dir}'" \
+    "misc.seed=${SEED}" \
+    "misc.fold_env=${fold_id}" \
+    || { echo "[dl_job] ERROR: eval.py failed on ${fold_id}"; return 1; }
+
+  echo "[dl_job] DONE ${fold_id}  metrics_<ckpt>.json → ${out_dir}/"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Dispatch based on mode
+# ---------------------------------------------------------------------------
+if [[ "${MODE}" == "multi" ]]; then
+  FAIL_COUNT=0
+  for fold_id in ${FOLDS}; do
+    fold_env="${fold_id%.*}"
+    fold_year="${fold_id##*.}"
+    out_dir="${ARTIFACT_ROOT}/${fold_id}/${SLUG}/seed=${SEED}"
+    run_one_fold "${fold_env}" "${fold_year}" "${out_dir}" \
+      || (( ++FAIL_COUNT ))
+  done
+  if (( FAIL_COUNT > 0 )); then
+    echo "[dl_job] ${FAIL_COUNT} fold(s) failed; see log above"
+    exit 1
+  fi
+  echo "[dl_job] All folds complete for ${SLUG}/seed=${SEED}"
+else
+  run_one_fold "${FOLD_ENV}" "${FOLD_YEAR}" "${OUT_DIR}" || exit 1
+fi

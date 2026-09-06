@@ -1,0 +1,16 @@
+# @package _global_
+#
+# Inductive weather-GxE composer — ols over the eigen-projected weather-GxE kernel
+# stack (DAP axis). Same modality subsets (NGRDI VI, PTR weather) as the
+# bglr/gblup weather-GxE twins so it pairs directly in the regressor comparison.
+# The cv scheme (cv_2_1 / cv_0_00) is selected at submit time via
+# +cv_spec=...; without it the composer runs the env_year_loo-style
+# filter split (dataset.test_filter_columns).
+defaults:
+  - /optim: none
+  - /data: g2f
+  - /model/fpca: fpca_eid_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_ols_mse
+  - /vi_subset: ngrdi
+  - /weather_subset: ptr
+  - /axis: shared_t-dap
+  - _self_

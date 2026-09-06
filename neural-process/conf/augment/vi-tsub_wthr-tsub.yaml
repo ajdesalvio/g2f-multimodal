@@ -1,0 +1,17 @@
+# @package _global_
+#
+# VI and weather timepoint subsampling (train-only): per task an
+# independent keep-fraction is drawn for each modality (VI ~ U[0.75, 1.0],
+# weather ~ U[0.5, 1.0]) and applied uniformly across the task's samples. Both
+# `vi_tsub` / `wthr_tsub` slug pieces render so the artifact dir stays
+# collision-safe.
+augment:
+  vi:
+    keep_frac_range: [0.75, 1.0]
+    min_kept: 5
+  weather:
+    keep_frac_range: [0.5, 1.0]
+    min_kept: 5
+
+vi_tsub: ".tsub=0.75-1.0"
+wthr_tsub: ".tsub=0.5-1.0"

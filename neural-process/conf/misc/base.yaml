@@ -1,0 +1,126 @@
+# Shared `misc.*` block, composed at root by every experiment's defaults.
+# Root interpolations (${model_name}, ...) resolve lazily at access time —
+# they sit unresolved until an experiment group supplies them at root.
+
+# Inherit the MiscConfig structured schema (registered group-less; pulled into
+# the misc package via @_here_). Fields below override schema defaults.
+defaults:
+  - /base_misc@_here_
+  - _self_
+
+# Experiment Naming and Organization
+experiment_name: G2F-Exp
+# fold_env: overridden per fold via CLI (misc.fold_env=DEH1.2020).
+# Empty string means no fold suffix (e.g. smoke tests, non-LOO runs).
+# Must stay as the empty string ""; null would change the cond
+# resolver branch.
+fold_env: ""
+# The per-encoder time/channel pieces (vi_time/vi_chan/vi_aug, wthr_*) are now
+# interpolated INLINE into each peer token in `model_name` (e.g.
+# `vi.t=${vi_time}.c=${vi_chan}${vi_aug}`), so the slug no longer appends
+# separate `_vis=`/`_ws=`/`_axis=` tags — `model_name` already carries them.
+model_run_name: ${model_name}${oc.select:hp_tag,""}-seed=${.seed}${cond:${.fold_env},"-fold=${.fold_env}"}${oc.select:eval_tag,""}${oc.select:wa_tag,""}
+# model_slug = aggregation-stable run identity (no seed/fold suffix): runs
+# differing only by seed/fold share a slug, different features/HPs/axes stay
+# distinct. Written to metrics.json meta.model_slug and == cv.slug_util.
+# resolve_slug. hp_tag lives in conf/optim/default.yaml (oc.select default ""
+# covers configs composed without it). eval_tag is the monitor val-carve tag
+# (root key set by the eval-stream bundle; "" for the default random-0.1 carve
+# and carve-less bundles, so existing slugs are unchanged) — it distinguishes
+# runs that differ only in the carve that selects best.ckpt.
+model_slug: ${model_name}${oc.select:hp_tag,""}${oc.select:eval_tag,""}${oc.select:wa_tag,""}
+
+# Logging Configuration — one W&B project per CV scheme: `G2F-<scheme>`,
+# where <scheme> is cv_spec.scheme mapped through the `scheme_label` resolver
+# (identity, except env_year_loo → ey_loo). Runs composed without a cv_spec
+# (ad-hoc) fall back to the env_year_loo label → G2F-ey_loo.
+wandb_logging_enabled: true
+# Evaluation (eval.py / run_eval) is silent by default — the scoring pass
+# writes metrics.json; W&B logging for it is opt-in and independent of the
+# training toggle above.
+wandb_eval_logging_enabled: false
+# wandb_run_id: explicit null. Production jobs that resume a run
+# override via misc.wandb_run_id=<id>.
+wandb_run_id: null
+project: ${.data}-${scheme_label:${oc.select:cv_spec.scheme,env_year_loo}}
+name: ${.model_run_name}
+eval_name: ${.name}_eval
+data: G2F
+hardware_callback: true
+
+# Checkpointing Configuration
+checkpointing:
+  resume_from: null
+  save_last: true
+  best:
+    enabled: true
+    # monitor / mode are DERIVED from the monitor eval stream (B7) — e.g.
+    # val_pearson_r / max — not hardcoded here.
+    # Opt-in: instead of letting best.ckpt chase improvements to the last
+    # epoch, FREEZE it once the monitor plateaus (same patience / min_delta
+    # test as early stopping) while training CONTINUES to the full epoch
+    # budget — so the training curve still records the post-plateau
+    # trajectory. Off by default: best.ckpt = global best over all epochs.
+    # Pair with early_stopping.enabled=false (otherwise early stop halts
+    # training first and the freeze is moot).
+    freeze_on_plateau:
+      enabled: false
+      patience: 50
+      min_delta: 0.001
+      # Per-metric plateau thresholds (metric -> delta); unlisted metrics use
+      # min_delta above. rmse is on a ~2.0 scale (vs pearson_r ~0-1), so it gets
+      # its own coarser threshold.
+      min_delta_by_metric:
+        rmse: 0.005
+      # Second frozen set: best_frozen_d01_<metric>.ckpt with a uniform 0.01
+      # plateau threshold across pearson_r / rmse / loglik (patience inherited).
+      # Compare against the default best_frozen_<metric> set offline.
+      extra_profiles:
+        - name: d01
+          min_delta: 0.01
+  enable_version_counter: false
+  save_weights_only: true
+
+default_lightning_logger: false
+
+# Directory structure for local artifacts. ${model_name} is supplied
+# at root by the experiment group; reading these fields before an
+# experiment is composed raises InterpolationKeyError.
+artifacts_dir: artifacts/${model_name}/seed=${.seed}
+checkpoint_dirpath: ${.artifacts_dir}/checkpoints
+metrics_dirpath: ${.artifacts_dir}/metrics
+
+# Training Settings
+seed: 0
+epochs: 250
+check_val_every_n_epoch: 1
+enable_progress_bar: true
+gradient_clip_val: 0.1
+save_training_curve: true
+# Per-epoch local metric logging (TrainingCurveCallback). Overwrite-by-default,
+# mirroring checkpointing.enable_version_counter; flip to preserve attempts.
+training_curve:
+  enable_version_counter: false
+# Weight averaging (EMA) — opt-in. When enabled, an EMA of the weights is
+# evaluated on the eval streams each epoch, so training_curve.jsonl reflects the
+# AVERAGED model's evolution (compare against the raw-weight twin to see if
+# averaging stabilises training). Decoupled from optimization; pairs with a
+# constant LR. Off by default. The `_wa=<kind><decay>` slug tag is derived from
+# these fields (conf/config.yaml `wa_tag`) so an EMA run's identity / artifact
+# dir differ from its raw twin.
+weight_averaging:
+  enabled: false
+  kind: ema
+  decay: 0.99
+# Lightning `log_every_n_steps` (when a logger is attached). 1 ⇒ log every
+# training step. Set to 16 to throttle W&B logging — logging every step was too
+# frequent and caused some W&B-logging jobs to fail.
+log_interval: 16
+
+# Early stopping — monitors the derived monitor-stream key (the carve stream's
+# {name}_{monitor_metric}, e.g. val_pearson_r). monitor/mode are derived in
+# Python from the eval streams (B7), not set here.
+early_stopping:
+  enabled: true
+  patience: 50
+  min_delta: 0.001

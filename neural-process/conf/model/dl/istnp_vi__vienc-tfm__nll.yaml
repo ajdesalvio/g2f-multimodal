@@ -1,0 +1,221 @@
+# @package _global_
+#
+# cv_0_00 istnp — VI-ONLY variant: induced-set (pseudo-token) cross-sample
+# encoder over raw VI alone, D64/L4 (small) dev capacity. BOTH the weather and
+# genomic branches are dropped — no weather sub-encoder, no geno MLP, no
+# raw_weather / genomic processors; fuse_x sees only the VI token embedding. The
+# raw-VI-only peer of istnp_vi_ga_gd__grm-rows__vienc-tfm__nll and
+# istnp_vi_wthr_ga_gd__grm-rows__vienc-tfm__wthrenc-tfm__nll.
+# SELF-CONTAINED — no inheritance.
+#
+# Pipeline:  SampleTokenizer (VI TransformerSetEncoder → fuse_x → token_proj,
+#   with a density channel on y) → ISTransformerEncoder (cross-sample)
+#   → MLPDecoder → HeteroscedasticNormalLikelihood.
+#
+# raw_vi stays disabled (conf/data/g2f default); with vi_subset=full the
+# raw VI set-encoder consumes all 37 channels, so no dataset.processing
+# override is needed here. VI sub-encoder coord/channel dims (params.x_dim/y_dim) are
+# auto-injected from the assembled view (setup._inject_view_dims).
+
+model:
+  _target_: set_func.models.TransformerNeuralProcess
+  tokenizer: ${tokenizer}
+  transformer_encoder: ${transformer_encoder}
+  decoder: ${decoder}
+  head: ${head}
+
+# ── Per-sample tokenizer (weather_encoder + geno_encoder omitted → None) ──
+tokenizer:
+  _target_: set_func.models.SampleTokenizer
+  vi_encoder: ${vi_set_encoder}
+  fuse_x: ${fuse_x}
+  y_encoder: ${token_y_encoder}
+  token_proj: ${token_proj}
+  d_model: ${params.d_model}
+
+# ── VI per-sample set encoder (curve -> one token) ───────────────
+vi_set_encoder:
+  _target_: set_func.core.encoders.TransformerSetEncoder
+  out_dim: ${params.vi_embed_dim}
+  latent_encoder: ${vi_latent_encoder}
+  aggregator: ${vi_aggregator}
+  x_encoder: ${vi_x_encoder}
+  y_encoder: ${vi_y_encoder}
+  xy_encoder: ${vi_xy_encoder}
+  output_encoder: null
+
+vi_latent_encoder:
+  _target_: set_func.core.transformers.TransformerEncoder
+  layer: ${vi_mhsa_layer}
+  num_layers: ${params.vi_num_layers}
+
+vi_mhsa_layer:
+  _target_: set_func.core.attention_layers.MultiHeadAttentionLayer
+  attention: ${vi_attention}
+  embed_dim: ${params.vi_embed_dim}
+  feedforward_dim: ${params.vi_embed_dim}
+  norm_first: ${params.norm_first}
+
+vi_attention:
+  _target_: set_func.core.attentions.MultiHeadAttention
+  q_dim: ${params.vi_embed_dim}
+  k_dim: ${params.vi_embed_dim}
+  v_dim: ${params.vi_embed_dim}
+  num_heads: ${params.vi_num_heads}
+  head_dim: ${params.vi_head_dim}
+
+vi_x_encoder:
+  _target_: set_func.core.mlp.MLP
+  in_dim: ${params.x_dim}
+  out_dim: ${params.vi_embed_dim}
+  num_layers: 1
+  layer_dim: ${params.vi_embed_dim}
+
+vi_y_encoder:
+  _target_: set_func.core.mlp.MLP
+  in_dim: ${params.y_dim}
+  out_dim: ${params.vi_embed_dim}
+  num_layers: 1
+  layer_dim: ${params.vi_embed_dim}
+
+vi_xy_encoder:
+  _target_: set_func.core.mlp.MLP
+  in_dim: ${eval:'${params.vi_embed_dim} * 2'}
+  out_dim: ${params.vi_embed_dim}
+  num_layers: 1
+  layer_dim: ${params.vi_embed_dim}
+
+vi_aggregator:
+  _target_: set_func.utils.PMAAggregator
+  embed_dim: ${params.vi_embed_dim}
+  num_heads: ${params.vi_num_heads}
+  head_dim: ${params.vi_head_dim}
+  num_seeds: 1
+
+# ── x = (vi) projection -> d_x (= d_model) ───────────────────────
+# Only the VI token feeds fuse_x (weather/geno branches dropped), so in_dim is
+# just vi_embed_dim.
+fuse_x:
+  _target_: set_func.core.mlp.MLP
+  in_dim: ${params.vi_embed_dim}
+  out_dim: ${params.d_model}
+  num_layers: 1
+  layer_dim: ${params.d_model}
+
+# ── token y-encoder over (yield, density) ────────────────────────
+token_y_encoder:
+  _target_: set_func.core.mlp.MLP
+  in_dim: 2
+  out_dim: ${params.d_y}
+  num_layers: 1
+  layer_dim: ${params.d_y}
+
+# ── token projection (xy encoder): [d_x + d_y] -> d_model ──
+token_proj:
+  _target_: set_func.core.mlp.MLP
+  in_dim: ${eval:'${params.d_model} + ${params.d_y}'}
+  out_dim: ${params.d_model}
+  num_layers: 1
+  layer_dim: ${params.d_model}
+
+# ── Cross-sample encoder: pseudo-token memory (O(Nc*K)) ──────────
+transformer_encoder:
+  _target_: set_func.core.np.ISTransformerEncoder
+  layer: ${np_mhsa_layer}
+  num_layers: ${params.num_layers}
+  num_pseudo: ${params.num_pseudo}
+
+np_mhsa_layer:
+  _target_: set_func.core.attention_layers.MultiHeadAttentionLayer
+  attention: ${np_attention}
+  embed_dim: ${params.d_model}
+  feedforward_dim: ${params.feedforward_dim}
+  norm_first: ${params.norm_first}
+
+np_attention:
+  _target_: set_func.core.attentions.MultiHeadAttention
+  q_dim: ${params.d_model}
+  k_dim: ${params.d_model}
+  v_dim: ${params.d_model}
+  num_heads: ${params.num_heads}
+  head_dim: ${params.head_dim}
+
+# ── Decoder / likelihood (heteroscedastic NLL) ───────────────────
+decoder:
+  _target_: set_func.core.decoders.MLPDecoder
+  z_decoder: ${z_decoder}
+
+z_decoder:
+  _target_: set_func.core.mlp.MLP
+  in_dim: ${params.d_model}
+  out_dim: ${eval:'2 * ${params.s_dim}'}   # (mean | log_scale), chunked
+  num_layers: 2
+  layer_dim: ${params.d_model}
+
+head:
+  _target_: set_func.likelihoods.HeteroscedasticNormalLikelihood
+  location_transform: softplus           # yield >= 0
+  min_noise: 0.01                        # noise floor (added AFTER scale_transform)
+  scale_transform:
+    - softplus
+    - multiply: {value: 0.99}            # scale = 0.99*softplus(log_scale) + 0.01
+
+# ── Task sampler (train) + eval context (val/test) ───────────────
+task_sampler:
+  tasks_per_batch: 4
+  batches_per_epoch: 64
+  nc_min: 4096           # pinned high: train in the same ~7k full-pool regime cv_0_00 evals on
+  nc_max: 8192           # ceiling; clamped to N-1 when the pool is smaller
+  nc_sampler: uniform    # nc ~ U[nc_min, nc_max]
+  nq_min: 4
+  nq_max: 32
+  seed: ${misc.seed}
+  eval_context: train     # val/test condition on the train FIT/OBSERVE pool
+  num_workers: 0
+  pin_memory: true
+
+params:
+  # cross-sample IST transformer (the _S dev capacity class; single num_layers L)
+  d_model: 64
+  num_layers: 4
+  num_heads: 4            # 4*head_dim(16) = 64 = d_model
+  head_dim: 16
+  feedforward_dim: 64
+  norm_first: true
+  num_pseudo: 256         # induced points (K); sweep {128,256,512}, drop first if OOM
+  # VI per-sample sub-encoder
+  vi_embed_dim: 64
+  vi_num_layers: 2
+  vi_num_heads: 4
+  vi_head_dim: 16
+  # token (yield, density) encoder width
+  d_y: 64
+  # VI view dims (injected; non-null defaults so logger-time resolve works)
+  x_dim: 1
+  y_dim: 37
+  s_dim: 1
+
+loss_name: nll
+
+model_name: istnp_L${params.num_layers}_H${params.num_heads}x${params.head_dim}_D${params.d_model}_FF${params.feedforward_dim}_ist.k${params.num_pseudo}_vi.enc=tfm.d${params.vi_embed_dim}.L${params.vi_num_layers}.h${params.vi_num_heads}_vi.t=${vi_time}.c=${vi_chan}${vi_aug}${vi_tsub}_loss=${loss_name}
+
+phase_configs:
+  train:
+    _target_: utils.experiment.lightning_wrapper.PhaseConfig
+    metric_fn:
+      _target_: utils.experiment.metrics.Metric
+      metrics:
+        _target_: utils.experiment.metrics.LogLikelihood
+    metric_kwargs:
+      mode: loss
+
+  eval:
+    _target_: utils.experiment.lightning_wrapper.PhaseConfig
+    metric_fn:
+      _target_: utils.experiment.metrics.Metric
+      metrics:
+        - _target_: utils.experiment.metrics.RMSE
+        - _target_: utils.experiment.metrics.PearsonCorrelation
+        - _target_: utils.experiment.metrics.SpearmanCorrelation
+    metric_kwargs:
+      mode: eval

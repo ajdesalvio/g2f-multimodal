@@ -1,0 +1,97 @@
+#!/bin/bash
+# =============================================================================
+# random_kfold split group — FPCA/BGLR split job (CPU only)
+# =============================================================================
+# Runs ONE random_kfold split: a plain per-ROW random k-fold over ALL rows
+# (no environment removed, no female grouping), fold ${FOLD} of ${K_FOLDS}
+# seeded by ${CV_SEED}. One BGLR fit → a single "test" label (the held-out
+# fold) in the D8 by_metric block. This is the FPCA/BGLR counterpart of the
+# DL curve-track random_kfold runs — SAME per-row fold partition (same
+# cv_seed + k_folds → same random_row_fold_array over the identical
+# coverage-filtered universe), so the two are directly comparable per fold.
+#
+# Drives a role-based split via the `cv_spec` config group — NOT
+# `dataset.test_filter_columns`. No eval_streams (BGLR fits once and scores by
+# cv_label; no per-epoch curve).
+#
+# Required env vars (exported by submit_fpca.sh):
+#   CV_SEED   — seeds the per-row fold partition (≠ model seed)
+#   FOLD      — held-out (test) fold index (1..K_FOLDS)
+#   CONFIG    — FPCA model fragment under conf/experiment/fpca/ (no .yaml)
+#   SLUG      — resolved misc.model_slug (cv.slug_util.resolve_slug)
+#   SEED      — model seed (BGLR set.seed / init); distinct from CV_SEED
+#   OUT_DIR   — artifact output dir (= ${ROOT}/Seed{NN}.Fold{K}/${SLUG}/seed=${SEED})
+# Optional:
+#   K_FOLDS   — number of per-row folds (default 5; must match the DL sweep)
+#   SMOKE_N   — subsample each split to N rows for a smoke run
+# =============================================================================
+
+#SBATCH --time=15:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=50G
+#SBATCH --output=scripts/jobs/cv/random_kfold/logs/%x.txt
+
+# Resource directives are defaults; submit_fpca.sh overrides via sbatch flags.
+
+[[ -z "${CV_SEED:-}" || -z "${FOLD:-}" || -z "${CONFIG:-}" \
+   || -z "${SLUG:-}" || -z "${SEED:-}" || -z "${OUT_DIR:-}" ]] \
+  && { echo "[random_kfold] ERROR: Missing one of CV_SEED/FOLD/CONFIG/SLUG/SEED/OUT_DIR"; exit 1; }
+
+echo "[random_kfold] Seed${CV_SEED}.Fold${FOLD}  Config=${CONFIG}  Slug=${SLUG}  ModelSeed=${SEED}"
+echo "[random_kfold] Output: ${OUT_DIR}"
+
+# ---------------------------------------------------------------------------
+# Environment setup
+# ---------------------------------------------------------------------------
+module purge
+module load GCC/13.2.0
+module load Python/3.11.5
+module load WebProxy/0000
+module load git/2.42.0
+
+module load R/4.4.1
+export R_LIBS_USER=/scratch/user/$USER/neural-processes/env/r_libs
+
+ROOT_DIR="/scratch/user/$USER/neural-processes/g2f-multimodal/neural-process"
+ENV_PATH="/scratch/user/$USER/neural-processes/env/bin/activate"
+
+[[ -f "${ENV_PATH}" ]] || { echo "[random_kfold] ERROR: venv not found at ${ENV_PATH}"; exit 1; }
+source "${ENV_PATH}"
+
+cd "${ROOT_DIR}" || { echo "[random_kfold] ERROR: Cannot cd to ${ROOT_DIR}"; exit 1; }
+
+# Stage any wandb run dirs on node-local scratch ($TMPDIR, auto-reaped at job
+# end). FPCA wandb is off by default; defensive.
+export WANDB_DIR="${TMPDIR:-/tmp}/wandb_${SLURM_JOB_ID:-$$}"
+mkdir -p "${WANDB_DIR}"
+
+SMOKE_N_OVERRIDE=()
+if [[ -n "${SMOKE_N:-}" ]]; then
+  SMOKE_N_OVERRIDE=("+dataset.smoke_n=${SMOKE_N}")
+fi
+
+if [[ -f "${OUT_DIR}/metrics.json" ]]; then
+  echo "[random_kfold] SKIP (metrics.json exists)"
+  exit 0
+fi
+
+# Per-row random k-fold: cv_spec.fold_source is unused (the partition is always
+# a native per-row seeded draw), so it is not passed. k_folds MUST match the DL
+# sweep (default 5) so the fold partition is identical.
+echo "[random_kfold] ---- Running Seed${CV_SEED}.Fold${FOLD} ----"
+python -m baselines.fpca_train \
+  +experiment=fpca/${CONFIG} \
+  +cv_spec=random_kfold \
+  "cv_spec.cv_seed=${CV_SEED}" \
+  "cv_spec.fold=${FOLD}" \
+  "cv_spec.k_folds=${K_FOLDS:-5}" \
+  "${SMOKE_N_OVERRIDE[@]}" \
+  "misc.artifacts_dir='${OUT_DIR}'" \
+  "misc.metrics_dirpath='${OUT_DIR}'" \
+  "misc.seed=${SEED}" \
+  "misc.wandb_logging_enabled=${WANDB_LOGGING:-false}" \
+  || { echo "[random_kfold] ERROR: fpca_train failed"; exit 1; }
+
+echo "[random_kfold] DONE  metrics.json → ${OUT_DIR}/metrics.json"

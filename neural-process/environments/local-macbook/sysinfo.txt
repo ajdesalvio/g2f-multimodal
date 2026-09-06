@@ -1,0 +1,11 @@
+# Local developer workstation details used for development and debugging.
+# Captured 2026-04-13; re-captured 2026-08-19.
+
+ProductName:        macOS
+ProductVersion:     26.5.2
+BuildVersion:       25F84
+arch:               arm64 (Apple Silicon)
+python:             <dev-machine>/env-base/bin/python (shared dev venv)
+python_version:     Python 3.13.1
+R:                  /usr/local/bin/R
+R_version:          R 4.5.2 (2025-10-31) "[Not] Part in a Rumble"

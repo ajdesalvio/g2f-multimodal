@@ -1,0 +1,19 @@
+# R packages used locally for development and debugging.
+# Base R: 4.5.2 "[Not] Part in a Rumble" (from /usr/local/bin/R, Homebrew).
+# Captured 2026-04-13; re-verified 2026-08-19.
+#
+# Only the packages directly used by baselines/fpca_compute.R,
+# baselines/bglr_compute.R, and baselines/gblup_compute.R are listed here.
+# Transitive dependencies are whatever CRAN pulled in during
+# `install.packages()` on this machine and are not explicitly tracked.
+#
+# The local BGLR 1.1.4 carries the same rank-1 `drop = FALSE` patch as
+# Grace (applied via ../../scripts/patch_bglr.sh) — required for the
+# weather-GxE bglr runs; see ../../baselines/R_HPC_SETUP.md.
+
+Package       Version
+BGLR          1.1.4
+fdapace       0.6.0
+jsonlite      2.0.0
+optparse      1.7.5
+sommer        4.4.5

@@ -1,0 +1,28 @@
+# @package _global_
+# Frequentist-twin weather-GxE over the AGDD time axis — the AGDD twin of
+# fpca_eid_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_gblup_mse (REML/BLUP via
+# sommer). Same model; `/axis: shared_t-agdd` swaps BOTH vi_fpca (VI on
+# the deduped dap.gdd scale + NaN-drop, vi_dedup) and weather_fpca
+# (deduped clean-AGDD grid; weather_kernel inherits) to AGDD, and tags
+# the per-encoder time tokens `vi.t=agdd` / `wthr.t=agdd`. Pairs against
+# fpca_eid_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_bglr_mse__t-agdd.
+defaults:
+  - /optim: none
+  - /data: g2f
+  - /model/fpca: fpca_eid_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_gblup_mse
+  - /vi_subset: ngrdi
+  - /weather_subset: ptr
+  - /axis: shared_t-agdd
+  - _self_
+
+# Weather FPCA on the AGDD axis is ~per-variable expensive (the continuous,
+# env-specific AGDD grid blows up fdapace's covariance smoothing), so restrict
+# the FIT to the only variable this baseline emits (PTR) instead of fitting all
+# ~42 columns. By per-variable FPCA independence this is bit-identical to the
+# full fit sliced to PTR — it only avoids computing the 41 unused fits. The
+# emit set (emit_vars: [PTR]) comes from weather_subset=ptr and is unchanged;
+# DAP experiments keep the default full fit (fit_vars unset).
+dataset:
+  processing:
+    weather_fpca:
+      fit_vars: [PTR]

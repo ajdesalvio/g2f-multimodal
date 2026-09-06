@@ -1,0 +1,193 @@
+#!/bin/bash
+# =============================================================================
+# CV_0_00_2_1 — UNIFIED Deep-Learning split job (GPU)
+# =============================================================================
+# ONE cv_0_00 | cv_2_1 split for ANY DL model config in the unified sweep. This
+# single engine serves the neural_process (induced-set TNP) family; per-model
+# knobs (EPOCHS / FREEZE_PATIENCE / --gres / W&B project / the experiment
+# config) are passed in by submit_cv.sh from the class's spec block.
+#
+# Trains EPOCHS epochs under CONSTANT LR, NO early stopping, streaming the
+# scheme's scored CV subsets every epoch into training_curve.jsonl; keeps
+# best_<metric>.ckpt per checkpoint metric (monitor = val_pearson_r over the
+# grouped_variety n_groups=30 OOD carve), best_frozen[_<prof>]_<metric>.ckpt
+# (best up to the val_pearson_r plateau; freeze_on_plateau, patience
+# FREEZE_PATIENCE), AND last.ckpt; then eval.py scores every checkpoint ->
+# metrics_best_<metric>.json + metrics_best_frozen[_<prof>]_<metric>.json +
+# metrics_last.json (there is NO bare metrics.json on the DL path).
+# curve.done sentinel (touched only after eval.py exits 0; idempotent
+# re-runs).
+#
+# UNIFIED ARTIFACT PATH — set by submit_cv.sh, diverging on model class:
+#   artifacts/cv/cv_0_00_2_1/<MODEL_CLASS>/<scheme>/<token>/<slug>/seed=<n>
+# W&B: per-class, per-scheme project (WANDB_PROJECT), e.g. G2F-NP-cv_0_00.
+#
+# *** FOLD / DATA-SPLIT PARITY (keep every class directly comparable) ***
+# The held-out test sets (CV0/CV00 for cv_0_00, CV1/CV2 for cv_2_1) are fixed by
+# cv_spec + cv_seed + fold + the female-fold partition. To stay IDENTICAL across
+# classes (np / fpca) and prior runs:
+#   - cv_seed (R Seed_Num)            : passed by submit_cv.sh (= 1)
+#   - fold partition                  : fold_source=r_csv over FOLD_CSV
+#                                       (cv/data/female_folds.csv) — NOT native
+#   - val-carve seed (data.val_seed)  : default 0 (NOT overridden here)
+# Only the MODEL and the val carve differ; the scored data does not.
+#
+# Required env (exported by submit_cv.sh):
+#   MODEL_CLASS   — neural_process   (labels W&B group/tags only)
+#   SCHEME        — cv_0_00 | cv_2_1
+#   EVAL_STREAMS  — eval-stream bundle name (cv_0_00 | cv_2_1); + prefix added here
+#   CV_SEED       — R Seed_Num; female-fold partition (shared across classes)
+#   FOLD          — held-out fold index (1..k_folds)
+#   CONFIG        — DL model fragment under conf/experiment/dl/ (no .yaml)
+#   SLUG          — resolved misc.model_slug WITH sched_name=const (see submit)
+#   SEED          — DL-only weight-init / batch-order seed (misc.seed)
+#   OUT_DIR       — unified artifact output dir for this split
+#   EPOCHS        — misc.epochs budget for this model class
+#   WANDB_PROJECT — per-class/-scheme W&B project (e.g. G2F-NP-cv_0_00)
+# Required only for SCHEME=cv_0_00:
+#   HELDOUT_ENV   — held-out environment, Env.Year form (e.g. DEH1.2020)
+# Optional:
+#   FREEZE_PATIENCE — freeze_on_plateau patience (default 25)
+#   FOLD_CSV        — committed female_folds.csv for r_csv fold parity (else native)
+#   SMOKE_N         — subsample each split to N rows for a smoke run
+#   WANDB_LOGGING   — true|false (default true)
+# =============================================================================
+
+#SBATCH --time=8:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=50G
+#SBATCH --gres=gpu:1
+#SBATCH --partition=gpu
+#SBATCH --output=scripts/jobs/cv/cv_0_00_2_1/logs/%x.txt
+# Resource directives are defaults; submit_cv.sh overrides --time/--gres per model.
+
+[[ -z "${MODEL_CLASS:-}" || -z "${SCHEME:-}" || -z "${EVAL_STREAMS:-}" \
+   || -z "${CV_SEED:-}" || -z "${FOLD:-}" || -z "${CONFIG:-}" \
+   || -z "${SLUG:-}" || -z "${SEED:-}" || -z "${OUT_DIR:-}" \
+   || -z "${EPOCHS:-}" || -z "${WANDB_PROJECT:-}" ]] \
+  && { echo "[dl] ERROR: missing one of MODEL_CLASS/SCHEME/EVAL_STREAMS/CV_SEED/FOLD/CONFIG/SLUG/SEED/OUT_DIR/EPOCHS/WANDB_PROJECT"; exit 1; }
+if [[ "${SCHEME}" == "cv_0_00" && -z "${HELDOUT_ENV:-}" ]]; then
+  echo "[dl] ERROR: SCHEME=cv_0_00 requires HELDOUT_ENV"; exit 1
+fi
+
+# Per-scheme fold-identity string (matches cv.slug_util.fold_dir_token).
+if [[ "${SCHEME}" == "cv_0_00" ]]; then
+  FOLD_ENV="Seed$(printf '%02d' "${CV_SEED}").Fold${FOLD}.${HELDOUT_ENV}"
+else
+  FOLD_ENV="Seed$(printf '%02d' "${CV_SEED}").Fold${FOLD}"
+fi
+
+echo "[dl] ${MODEL_CLASS}/${SCHEME} ${FOLD_ENV}  Config=${CONFIG}  Slug=${SLUG}  Seed=${SEED}  Project=${WANDB_PROJECT}"
+echo "[dl] Output: ${OUT_DIR}"
+
+# ── Environment ───────────────────────────────────────────────────────────────
+# Only the base toolchain differs by cluster (verified via `module spider`):
+# FASTER builds Python/3.11.5 + git/2.42.0 on GCCcore/13.2.0; Grace uses the
+# full GCC/13.2.0. The shared loads below are identical on both. (R/4.4.1 needs
+# GCC/13.2.0 — resolves on Grace; under FASTER's GCCcore it does not, but that
+# load is non-fatal (no `set -e`) and the DL path never calls R.)
+module purge
+if [[ "$(hostname -s)" == fc* ]]; then   # FASTER (fc* compute nodes)
+  module load GCCcore/13.2.0
+else                                      # GRACE
+  module load GCC/13.2.0
+fi
+module load Python/3.11.5
+module load WebProxy/0000
+module load git/2.42.0
+module load R/4.4.1
+export R_LIBS_USER=/scratch/user/$USER/neural-processes/env/r_libs
+
+ROOT_DIR="/scratch/user/$USER/neural-processes/g2f-multimodal/neural-process"
+ENV_PATH="/scratch/user/$USER/neural-processes/env/bin/activate"
+[[ -f "${ENV_PATH}" ]] || { echo "[dl] ERROR: venv not found at ${ENV_PATH}"; exit 1; }
+source "${ENV_PATH}"
+cd "${ROOT_DIR}" || { echo "[dl] ERROR: cannot cd to ${ROOT_DIR}"; exit 1; }
+
+# Allocator: large-context / large-batch runs can fragment the CUDA cache;
+# expandable_segments lets the reserved pool grow/coalesce. Numerically inert.
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# Stage wandb run dirs on node-local scratch (auto-reaped); EXIT trap syncs.
+export WANDB_DIR="${TMPDIR:-/tmp}/wandb_${SLURM_JOB_ID:-$$}"
+mkdir -p "${WANDB_DIR}"
+trap 'wandb sync --clean --clean-force --clean-old-hours 0' EXIT
+
+# W&B service startup can exceed the 30 s default on a loaded node/network
+# (ServicePollForTokenError "Failed to read port info after 30.0 seconds"
+# has killed otherwise healthy jobs). Give it 5 min, and let
+# wandb.init retry the backend for up to 10 min, before failing the split.
+export WANDB__SERVICE_WAIT="${WANDB__SERVICE_WAIT:-300}"
+export WANDB_INIT_TIMEOUT="${WANDB_INIT_TIMEOUT:-600}"
+
+if [[ -f "${OUT_DIR}/curve.done" ]]; then
+  echo "[dl] SKIP (curve.done exists)"; exit 0
+fi
+
+# Fold/split parity: r_csv over the committed female_folds.csv when provided.
+if [[ -n "${FOLD_CSV:-}" ]]; then
+  export G2F_FEMALE_FOLDS_CSV="${FOLD_CSV}"
+  FOLD_SOURCE_OVERRIDE=("cv_spec.fold_source=r_csv")
+else
+  FOLD_SOURCE_OVERRIDE=("cv_spec.fold_source=native")
+fi
+
+SMOKE_N_OVERRIDE=()
+[[ -n "${SMOKE_N:-}" ]] && SMOKE_N_OVERRIDE=("+dataset.smoke_n=${SMOKE_N}")
+
+# Shared split identity (train + eval). data.val_seed is left at its default (0)
+# so the val carve is reproducible and matches prior runs.
+CV_OVERRIDES=(
+  "+experiment=dl/${CONFIG}"
+  "+cv_spec=${SCHEME}"
+  "cv_spec.cv_seed=${CV_SEED}"
+  "cv_spec.fold=${FOLD}"
+)
+[[ "${SCHEME}" == "cv_0_00" ]] && CV_OVERRIDES+=("cv_spec.heldout_env=${HELDOUT_ENV}")
+CV_OVERRIDES+=(
+  "${FOLD_SOURCE_OVERRIDE[@]}"
+  "${SMOKE_N_OVERRIDE[@]}"
+  "misc.artifacts_dir='${OUT_DIR}'"
+  "misc.metrics_dirpath='${OUT_DIR}'"
+  "misc.seed=${SEED}"
+)
+
+# Train/eval overrides: const LR (strip scheduler), no early stop, stream the
+# scheme's CV subsets, keep best+best_frozen+last, per-class project. Early stop
+# is OFF and freeze_on_plateau is ON: training runs the full EPOCHS budget (so
+# the curve records the whole trajectory) while best_frozen_<metric>.ckpt locks
+# the best model once val_pearson_r plateaus. best_<metric>.ckpt stays the
+# global best; eval scores every checkpoint.
+EXP_OVERRIDES=(
+  "+eval_streams=${EVAL_STREAMS}"
+  "misc.early_stopping.enabled=false"
+  "misc.checkpointing.best.freeze_on_plateau.enabled=true"
+  "misc.checkpointing.best.freeze_on_plateau.patience=${FREEZE_PATIENCE:-25}"
+  "~scheduler"
+  "~scheduler_config"
+  "sched_name=const"
+  "misc.epochs=${EPOCHS}"
+  "misc.project='${WANDB_PROJECT}'"
+)
+
+echo "[dl] ---- Training ${MODEL_CLASS}/${FOLD_ENV} (${EPOCHS} ep, const LR, no early stop) ----"
+python train.py \
+  "${CV_OVERRIDES[@]}" \
+  "${EXP_OVERRIDES[@]}" \
+  "misc.fold_env='${FOLD_ENV}'" \
+  "misc.wandb_logging_enabled=${WANDB_LOGGING:-true}" \
+  "misc.wandb_group='${MODEL_CLASS}/${SCHEME}/${CONFIG}/cvseed=${CV_SEED}/seed=${SEED}'" \
+  "misc.wandb_tags=[${MODEL_CLASS},${SCHEME},${CONFIG},'cvseed=${CV_SEED}','fold=${FOLD}','seed=${SEED}']" \
+  || { echo "[dl] ERROR: train.py failed"; exit 1; }
+
+echo "[dl] ---- Evaluating ${MODEL_CLASS}/${FOLD_ENV} (every checkpoint -> metrics_<label>.json) ----"
+python eval.py \
+  "${CV_OVERRIDES[@]}" \
+  "${EXP_OVERRIDES[@]}" \
+  "misc.fold_env='${FOLD_ENV}'" \
+  || { echo "[dl] ERROR: eval.py failed"; exit 1; }
+
+touch "${OUT_DIR}/curve.done"
+echo "[dl] DONE  curve -> ${OUT_DIR}/training_curve.jsonl ; metrics -> ${OUT_DIR}/metrics_<label>.json"

@@ -1,0 +1,43 @@
+# @package _global_
+#
+# weather-GxE MINUS the environment one-hot (BRR Z_e) — the env-FREE counterpart of
+# fpca_eid_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_bglr_mse. This is the legitimate
+# weather-interaction FPCA for cv_0_00: the held-out env is unseen, so an
+# Env.Year one-hot is illegitimate (its column is never in the training design
+# and contributes only the BRR prior mean to the held-out env). Dropping it makes
+# the weather main + G×W / VI×W interaction kernels carry ALL between-env signal —
+# the honest like-for-like for the TNP (which also has no env indicator).
+#
+# Inherits weather-GxE and overrides ONLY the env pieces (main-effects is the env-free template:
+# env_brr_key=null, no env_onehot, no metadata_features). Per the slug grammar,
+# the env one-hot main effect renders as a leading `eid` peer, so the env-bearing
+# weather-GxE is now `fpca_eid_ga…` and THIS env-free variant is distinguished simply by
+# LACKING `eid` — no workaround token needed (its slug is the bare `fpca_ga…`
+# weather-interaction form).
+defaults:
+  - fpca_eid_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_bglr_mse
+  - _self_
+
+dataset:
+  processing:
+    # Don't build the env one-hot kernel at all (main-effects simply omits this block).
+    metadata_features:
+      enabled: false
+
+regressor:
+  # weather-GxE's ETA minus the trailing env_onehot (Hydra REPLACES the list).
+  feature_keys:
+    - genomic_add
+    - genomic_dom
+    - phenomic_relmat
+    - weather_relmat
+    - gxwa
+    - gxwd
+    - pxw
+  env_brr_key: null
+
+# No env one-hot ⇒ no leading `eid` peer (cf. weather-GxE = `fpca_eid_ga…`). The slug is
+# the bare weather-interaction form; it cannot collide with weather-GxE (which carries
+# `eid`). This equals the *pre-grammar-token* weather-GxE slug, whose artifacts are
+# migrated onto the `eid` form, freeing this path for the env-free variant.
+model_name: fpca_ga.rank=full.uc_gaXwthr.rank=full_gd.rank=full.uc_gdXwthr.rank=full_vi.t=${vi_time}.c=${vi_chan}${vi_aug}.k=${dataset.processing.vi_fpca.n_components}.s=wez.rank=full.uc_viXwthr.rank=full_wthr.t=${wthr_time}.c=${wthr_chan}${wthr_aug}.k=1.s=gz.rank=full.uc_bglr_loss=mse

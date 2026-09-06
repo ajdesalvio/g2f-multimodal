@@ -1,0 +1,15 @@
+# @package _global_
+# `axis=fpca_t-dap_c-agdd`: VI-FPCA over DAP + AGDD as an extra independent
+# FPCA block (channels:[vi.*, agdd]; separate-FPCA, not joint MFPCA).
+# Scenario: "DAP axis + AGDD feature".
+dataset:
+  processing:
+    axis_source:
+      enabled: true
+    vi_fpca:
+      axis: dap
+      channels: [vi.*, agdd]
+
+# DAP time axis, AGDD added as an extra VI channel → `vi.t=dap.c=<chan>+agdd`.
+vi_time: dap
+vi_aug: +agdd

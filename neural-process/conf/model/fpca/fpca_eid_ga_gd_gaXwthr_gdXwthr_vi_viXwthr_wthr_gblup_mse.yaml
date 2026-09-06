@@ -1,0 +1,144 @@
+# @package _global_
+# Frequentist twin of weather-GxE — K=5 VI FPCs + K=1 weather FPC (PTR).
+#   GBLUP: REML variance components for
+#          K_A + K_D + K_P + K_E_W + KG_GE_AW + KG_GE_DW + KP_PW + K_env,
+#   then BLUP/kriging predictions. Identical kernel stack to the bglr
+#   fragment (fpca_eid_ga_gd_gaXwthr_gdXwthr_vi_viXwthr_wthr_bglr_mse) — only
+#   the regressor block differs, so Bayesian-vs-frequentist is a
+#   single-token swap.
+# Key choices (shared with the bglr twin):
+#   - vi.k=5: vi_fpca.n_components=5 (phenomic KP + KP_PW inherit it).
+#   - wthr.k=1: K=1 weather FPC on PTR (V2 curves), TRAIN-only z-score
+#     → rank-1 K_W. GBLUP handles rank-1 kernels natively (V_tr is SPD
+#     for any sigma2_e > 0), so — unlike the bglr twin — NO rank-1
+#     BGLR source patch is needed here.
+#   - _uc: genomic K_A/K_D enter uncentered (the R reference's recipe).
+#   - env BRR(Z_e) is folded into K_env = Z_e Z_eᵀ inside the regressor.
+
+# Unified slug grammar (alpha-sorted peers). Mirrors the bglr fragment's
+# model_name with the regressor token swapped bglr → gblup.
+model_name: fpca_eid_ga.rank=full.uc_gaXwthr.rank=full_gd.rank=full.uc_gdXwthr.rank=full_vi.t=${vi_time}.c=${vi_chan}${vi_aug}.k=5.s=wez.rank=full.uc_viXwthr.rank=full_wthr.t=${wthr_time}.c=${wthr_chan}${wthr_aug}.k=1.s=gz.rank=full.uc_gblup_loss=mse
+
+dataset:
+  processing:
+    metadata_features:
+      enabled: true
+      sources:
+        - name: env_onehot
+          column: Env.Year
+    vi_fpca:
+      enabled: true
+      n_components: 5
+    genomic:
+      enabled: true
+      # GRM recompute is ~1 min; the cache entry embeds the full 1180 x 238k
+      # dosage matrix (~2 GB per key). Don't persist in train-only CV runs.
+      persist_cache: false
+      csv_path: ./dataset-files/g2f/G2F_2020_2021_Genomic_Data.csv
+      center_kernel: false
+      sources:
+        - name: genomic_add
+          type: additive_grm
+        - name: genomic_dom
+          type: dominance_grm
+    phenomic:
+      enabled: true
+      # N x N derived kernel; only read back in predict mode. Don't write
+      # ~1-2 GB per split to .cache in train-only CV runs (quota).
+      persist_cache: false
+      kernel: linear
+      gamma: null
+      center_kernel: false
+      # K_P eigenbasis pools ALL envs: the kernel handed to the
+      # transductive regressor spans train+test rows jointly (test
+      # yields are masked in the fit — reference parity; the raw_kernel
+      # path requires fit_scope: all). The VI FPCA basis upstream is
+      # still train-only (basis-inductive policy).
+      fit_scope: all
+      sources:
+        - name: phenomic_relmat
+          type: phenomic_relmat
+          scaling: within_env_zscore
+    weather_fpca:
+      enabled: true
+      csv_path: ./dataset-files/g2f/EnvRtype_Weather_Data_Cleaned_V2.csv
+      n_components: 1
+      # emit/slice set (post-load) — only PTR scores reach the kernel.
+      emit_vars:
+        - PTR
+      # fit_scope defaults to 'train' — at deployment for a future year
+      # we don't have the test env's weather, so the FPCA basis must be
+      # fit on train envs only; held-out env curves are CE/BLUP-projected.
+      # scaling: none — FPC scores enter the weather_kernel layer
+      # unscaled; that layer owns the single z-score (see bglr twin).
+      scaling: none
+    weather_kernel:
+      enabled: true
+      # N x N derived kernel; only read back in predict mode. Don't write
+      # ~1-2 GB per split to .cache in train-only CV runs (quota).
+      persist_cache: false
+      center_kernel: false
+      # K_W eigenbasis pools ALL envs (transductive K_W — the
+      # raw_kernel path requires fit_scope: all). The global_zscore
+      # below is ALWAYS computed from the TRAIN envs only — never the
+      # held-out env — so it can't leak test info.
+      fit_scope: all
+      sources:
+        - name: weather_relmat
+          type: weather_relmat
+          scaling: global_zscore
+    interaction:
+      enabled: true
+      # N x N derived kernel; only read back in predict mode. Don't write
+      # ~1-2 GB per split to .cache in train-only CV runs (quota).
+      persist_cache: false
+      center_kernel: false
+      # Transductive kernels over all rows (fit_scope: all — the
+      # raw_kernel path requires it; reference parity), like the bglr twin.
+      sources:
+        - name: gxwa
+          type: interaction_relmat
+          components: [genomic_add, weather_relmat]
+          fit_scope: all
+        - name: gxwd
+          type: interaction_relmat
+          components: [genomic_dom, weather_relmat]
+          fit_scope: all
+        - name: pxw
+          type: interaction_relmat
+          components: [phenomic_relmat, weather_relmat]
+          fit_scope: all
+
+regressor:
+  name: gblup
+  loss_name: mse
+  # REML (sommer) controls; no Gibbs n_iter/burn_in.
+  reml_max_iter: 40
+  tol: 1.0e-4
+  # Term order is informational for GBLUP (variance components are
+  # estimated jointly), but kept aligned with the bglr twin's ETA order:
+  #   K_A, K_D, K_P, K_E_W, KG_GE_AW, KG_GE_DW, KP_PW, then K_env (Z_e).
+  feature_keys:
+    - genomic_add
+    - genomic_dom
+    - phenomic_relmat
+    - weather_relmat
+    - gxwa
+    - gxwd
+    - pxw
+    - env_onehot
+  env_brr_key: env_onehot
+misc:
+  wandb_logging_enabled: false
+  wandb_group: ${model_name}
+  wandb_tags:
+    - ${model_name}
+    - "seed=${misc.seed}"
+    - gblup
+    - reml
+    - frequentist-twin
+    - modality-ablation
+    - r-analog-weather-gxe
+    - interaction
+    - vi_K=5
+    - weather_K=1

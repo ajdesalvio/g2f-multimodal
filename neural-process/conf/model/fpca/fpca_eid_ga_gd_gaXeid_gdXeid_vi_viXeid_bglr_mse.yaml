@@ -1,0 +1,114 @@
+# @package _global_
+# R-analog env-GxE — K=5 VI FPCs (no weather; cf. weather-GxE).
+#   BGLR: RKHS(K_A)+RKHS(K_D)+RKHS(KG_GE_A)+RKHS(KG_GE_D)
+#         +RKHS(KP)+RKHS(KP_PE)+BRR(Z_e)
+# Key choices:
+#   - vi.k=5: vi_fpca.n_components=5 (phenomic KP + KP_PE inherit it).
+#   - _uc: genomic K_A/K_D enter BGLR uncentered (the R reference's recipe).
+#     No-op for K_A (Z=M−2p); removes a finite-sample HWE perturbation
+#     on K_D (Vitezica).
+
+# Unified slug grammar (alpha-sorted peers; vi carries its time/channel from
+# the axis/vi_subset groups + its phenomic kernel facets k/s/rank/uc). `eid` =
+# environment-identity one-hot (the R reference's GxE), formerly the `gxe*` `e`. The
+# filename is a facet-free peer mnemonic; `model_name` below adds the facets +
+# the group-driven vi.t/vi.c tokens, so filename != resolved slug.
+model_name: fpca_eid_ga.rank=full.uc_gaXeid.rank=full_gd.rank=full.uc_gdXeid.rank=full_vi.t=${vi_time}.c=${vi_chan}${vi_aug}.k=5.s=wez.rank=full.uc_viXeid.rank=full_bglr_loss=mse
+
+dataset:
+  processing:
+    metadata_features:
+      enabled: true
+      sources:
+        - name: env_onehot
+          column: Env.Year
+    vi_fpca:
+      enabled: true
+      n_components: 5
+    genomic:
+      enabled: true
+      # GRM recompute is ~1 min; the cache entry embeds the full 1180 x 238k
+      # dosage matrix (~2 GB per key). Don't persist in train-only CV runs.
+      persist_cache: false
+      csv_path: ./dataset-files/g2f/G2F_2020_2021_Genomic_Data.csv
+      center_kernel: false
+      sources:
+        - name: genomic_add
+          type: additive_grm
+        - name: genomic_dom
+          type: dominance_grm
+    phenomic:
+      enabled: true
+      # N x N derived kernel; only read back in predict mode. Don't write
+      # ~1-2 GB per split to .cache in train-only CV runs (quota).
+      persist_cache: false
+      kernel: linear
+      gamma: null
+      center_kernel: false
+      # K_P eigenbasis pools ALL envs: the kernel handed to the
+      # transductive regressor spans train+test rows jointly (test
+      # yields are masked in the fit — reference parity; the raw_kernel
+      # path requires fit_scope: all). The VI FPCA basis upstream is
+      # still train-only (basis-inductive policy).
+      fit_scope: all
+      sources:
+        - name: phenomic_relmat
+          type: phenomic_relmat
+          scaling: within_env_zscore
+    interaction:
+      enabled: true
+      # N x N derived kernel; only read back in predict mode. Don't write
+      # ~1-2 GB per split to .cache in train-only CV runs (quota).
+      persist_cache: false
+      center_kernel: false
+      sources:
+        - name: gxea
+          type: interaction_relmat
+          components: [genomic_add, env_onehot]
+          # interaction[genomic_add, env_onehot] — transductive kernel over all rows (raw_kernel path)
+          fit_scope: all
+        - name: gxed
+          type: interaction_relmat
+          components: [genomic_dom, env_onehot]
+          # interaction[genomic_dom, env_onehot] — transductive kernel over all rows (raw_kernel path)
+          fit_scope: all
+        - name: pxe
+          type: interaction_relmat
+          components: [phenomic_relmat, env_onehot]
+          # K_PE = KE_identity ⊙ K_P — transductive kernel over all rows
+          # (raw_kernel path).
+          fit_scope: all
+
+regressor:
+  name: bglr
+  loss_name: mse
+  n_iter: 10000
+  burn_in: 1000
+  # ETA order matches the R reference's env-GxE
+  # (DAP_LOEO_Prediction_Setup_V3.R:292):
+  #   c("KG_G_A", "KG_G_D", "KG_GE_A", "KG_GE_D", "KP", "KP_PE", "Ze")
+  feature_keys:
+    - genomic_add
+    - genomic_dom
+    - gxea
+    - gxed
+    - phenomic_relmat
+    - pxe
+    - env_onehot
+  env_brr_key: env_onehot
+misc:
+  # FPCA baselines emit a single test scalar per fold via metrics.json;
+  # the wandb side-channel adds nothing the LOO aggregator can't read
+  # from disk and trips on long-slug tag rejection (>64 chars). Disable
+  # for fpca; flip to true if you need run-tracking.
+  wandb_logging_enabled: false
+  wandb_group: ${model_name}
+  wandb_tags:
+    - ${model_name}
+    - "seed=${misc.seed}"
+    - bglr
+    - r-mirror
+    - modality-ablation
+    - r-analog-env-gxe
+    - interaction
+    - vi_K=5

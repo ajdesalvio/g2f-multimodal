@@ -1,0 +1,32 @@
+# @package _global_
+# AGDD axis for both set-encoder views (VI + weather):
+#   - VI (`main`) view: coords [agdd] — a single ABSOLUTE thermal-time axis
+#     (developmental alignment across envs).
+#   - weather view: coords [weather_agdd] — the same thermal-time axis on the
+#     daily weather grid; AND channels [weather.*, weather_agdd] — absolute
+#     AGDD re-injected as a feature so developmental stage is also available
+#     to the pooled representation as a channel value.
+# No dedup (DL full-grid raw cumsum); weather agdd z-scored from train envs only.
+dataset:
+  processing:
+    axis_source:
+      enabled: true
+      produce: [agdd]
+      dedup: false
+      vi_dedup: false
+    raw_weather:
+      extra_axes: [agdd]
+      extra_axes_scaling: global_zscore
+  views:
+    main:
+      coords: [agdd]
+    weather:
+      coords: [weather_agdd]
+      channels: ["weather.*", weather_agdd]
+
+# VI time axis = agdd (single coord). Weather time axis = agdd (single coord,
+# TE) with absolute agdd appended as a channel (+agdd in the .c= token).
+vi_time: agdd
+vi_aug: ""
+wthr_time: agdd
+wthr_aug: +agdd

@@ -1,0 +1,134 @@
+#!/bin/bash
+# =============================================================================
+# CV_0_00_2_1 — UNIFIED FPCA/BGLR split job (CPU only, Grace-only: needs R)
+# =============================================================================
+# ONE cv_0_00 | cv_2_1 split for the FPCA/BGLR (+ GBLUP / sklearn) baseline
+# family. Scheme-parametrized twin of the DL engine: same cv_spec split identity
+# (cv_seed + fold + [heldout_env] + female-fold partition), so its scored rows
+# are IDENTICAL to the neural_process runs and results are directly comparable.
+#
+# One fit -> the scheme's D8 by_metric block:
+#   cv_0_00 : hold out env ${HELDOUT_ENV} (whole column) + female-fold ${FOLD}
+#             -> CV0 (tested lines, new env) + CV00 (untested lines, new env).
+#   cv_2_1  : no env removed; female-fold ${FOLD} held out across all envs
+#             -> CV2 (tested, in-sample) + CV1 (untested).
+# scored via the shared cv.scoring path (incl. the within-block weighted r_w).
+#
+# FPCA is an ENDPOINT model (no epochs / checkpoints / curve): the done marker
+# is metrics.json, NOT curve.done. R is REQUIRED (BGLR / GBLUP via fdapace +
+# sommer), so this engine is Grace-only (R/4.4.1 needs the full GCC/13.2.0).
+#
+# UNIFIED ARTIFACT PATH — set by submit_cv.sh, diverging on model class:
+#   artifacts/cv/cv_0_00_2_1/fpca/<scheme>/<token>/<slug>/seed=<n>
+#
+# Required env (exported by submit_cv.sh):
+#   SCHEME       — cv_0_00 | cv_2_1
+#   CV_SEED      — R Seed_Num; female-fold partition (shared across classes)
+#   FOLD         — held-out fold index (1..k_folds)
+#   CONFIG       — FPCA model fragment under conf/experiment/fpca/ (no .yaml)
+#   SLUG         — resolved misc.model_slug (cv.slug_util.resolve_slug)
+#   SEED         — model seed (BGLR set.seed / init); distinct from CV_SEED
+#   OUT_DIR      — unified artifact output dir for this split
+# Required only for SCHEME=cv_0_00:
+#   HELDOUT_ENV  — held-out environment, Env.Year form (e.g. DEH1.2020)
+# Optional:
+#   FOLD_CSV        — committed female_folds.csv for r_csv fold parity (else native)
+#   SMOKE_N         — subsample each split to N rows for a smoke run
+#   EXTRA_OVERRIDES — space-separated extra Hydra overrides (word-split in job)
+#   WANDB_LOGGING   — true|false (default false; FPCA/BGLR has no W&B)
+# =============================================================================
+
+#SBATCH --time=15:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=50G
+#SBATCH --output=scripts/jobs/cv/cv_0_00_2_1/logs/%x.txt
+# Resource directives are defaults; submit_cv.sh overrides --time via flags.
+
+[[ -z "${SCHEME:-}" || -z "${CV_SEED:-}" || -z "${FOLD:-}" \
+   || -z "${CONFIG:-}" || -z "${SLUG:-}" || -z "${SEED:-}" \
+   || -z "${OUT_DIR:-}" ]] \
+  && { echo "[fpca] ERROR: missing one of SCHEME/CV_SEED/FOLD/CONFIG/SLUG/SEED/OUT_DIR"; exit 1; }
+if [[ "${SCHEME}" == "cv_0_00" && -z "${HELDOUT_ENV:-}" ]]; then
+  echo "[fpca] ERROR: SCHEME=cv_0_00 requires HELDOUT_ENV"; exit 1
+fi
+
+if [[ "${SCHEME}" == "cv_0_00" ]]; then
+  FOLD_ENV="Seed$(printf '%02d' "${CV_SEED}").Fold${FOLD}.${HELDOUT_ENV}"
+else
+  FOLD_ENV="Seed$(printf '%02d' "${CV_SEED}").Fold${FOLD}"
+fi
+
+echo "[fpca] ${SCHEME} ${FOLD_ENV}  Config=${CONFIG}  Slug=${SLUG}  ModelSeed=${SEED}"
+echo "[fpca] Output: ${OUT_DIR}"
+
+# ── Environment (Grace-only: R needed for BGLR/GBLUP) ─────────────────────────
+module purge
+module load GCC/13.2.0
+module load Python/3.11.5
+module load WebProxy/0000
+module load git/2.42.0
+module load R/4.4.1
+export R_LIBS_USER=/scratch/user/$USER/neural-processes/env/r_libs
+
+ROOT_DIR="/scratch/user/$USER/neural-processes/g2f-multimodal/neural-process"
+ENV_PATH="/scratch/user/$USER/neural-processes/env/bin/activate"
+[[ -f "${ENV_PATH}" ]] || { echo "[fpca] ERROR: venv not found at ${ENV_PATH}"; exit 1; }
+source "${ENV_PATH}"
+cd "${ROOT_DIR}" || { echo "[fpca] ERROR: cannot cd to ${ROOT_DIR}"; exit 1; }
+
+# Stage any wandb run dirs on node-local scratch ($TMPDIR, auto-reaped); FPCA
+# wandb is off by default — defensive against the /scratch inode quota.
+export WANDB_DIR="${TMPDIR:-/tmp}/wandb_${SLURM_JOB_ID:-$$}"
+mkdir -p "${WANDB_DIR}"
+
+# r_csv fold parity needs the CSV path resolvable by the ${oc.env:...}
+# interpolation in conf/cv_spec/<scheme>.yaml.
+if [[ -n "${FOLD_CSV:-}" ]]; then
+  export G2F_FEMALE_FOLDS_CSV="${FOLD_CSV}"
+  FOLD_SOURCE_OVERRIDE=("cv_spec.fold_source=r_csv")
+else
+  FOLD_SOURCE_OVERRIDE=("cv_spec.fold_source=native")
+fi
+
+SMOKE_N_OVERRIDE=()
+[[ -n "${SMOKE_N:-}" ]] && SMOKE_N_OVERRIDE=("+dataset.smoke_n=${SMOKE_N}")
+
+# Optional per-config Hydra overrides from submit_cv.sh (word-split intentionally;
+# each token is one override). Used e.g. to pin vi_fpca.fit_vars=null so a config
+# reuses the full-37 VI-FPCA cache instead of re-fitting.
+EXTRA_OVERRIDE_ARGS=()
+if [[ -n "${EXTRA_OVERRIDES:-}" ]]; then
+  # shellcheck disable=SC2206
+  EXTRA_OVERRIDE_ARGS=(${EXTRA_OVERRIDES})
+fi
+
+if [[ -f "${OUT_DIR}/metrics.json" ]]; then
+  echo "[fpca] SKIP (metrics.json exists)"; exit 0
+fi
+
+# cv_spec split overrides (scheme-dependent: heldout_env only for cv_0_00).
+# Single-quote `=`-bearing values (SLUG, paths) so Hydra treats them as string
+# primitives. cv_spec is selected with `+` (new root group); no test_filter_columns.
+CV_SPEC_OVERRIDES=(
+  "+cv_spec=${SCHEME}"
+  "cv_spec.cv_seed=${CV_SEED}"
+  "cv_spec.fold=${FOLD}"
+)
+[[ "${SCHEME}" == "cv_0_00" ]] && CV_SPEC_OVERRIDES+=("cv_spec.heldout_env=${HELDOUT_ENV}")
+
+echo "[fpca] ---- Running ${FOLD_ENV} ----"
+python -m baselines.fpca_train \
+  "+experiment=fpca/${CONFIG}" \
+  "${CV_SPEC_OVERRIDES[@]}" \
+  "${FOLD_SOURCE_OVERRIDE[@]}" \
+  "${SMOKE_N_OVERRIDE[@]}" \
+  "${EXTRA_OVERRIDE_ARGS[@]}" \
+  "misc.artifacts_dir='${OUT_DIR}'" \
+  "misc.metrics_dirpath='${OUT_DIR}'" \
+  "misc.seed=${SEED}" \
+  "misc.wandb_logging_enabled=${WANDB_LOGGING:-false}" \
+  || { echo "[fpca] ERROR: fpca_train failed"; exit 1; }
+
+echo "[fpca] DONE  metrics.json -> ${OUT_DIR}/metrics.json"

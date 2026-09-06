@@ -1,0 +1,41 @@
+# @package _global_
+#
+# DL optimization schedule — the AdamW optimizer, the LR scheduler, and the
+# `sched_name` / `hp_tag` slug tags. Selected by every DL experiment via
+# `defaults: - /optim: default`; non-DL (FPCA/BGLR/sklearn) experiments select
+# `/optim: none`, which supplies nothing (so their slug carries no hp_tag suffix).
+#
+# `# @package _global_` is non-negotiable: run.py reads `optimizer`, `scheduler`,
+# and `scheduler_config` as root keys, so this fragment's contents must land at
+# root — not under an `optim.*` namespace.
+
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: true
+  lr: 5.0e-5
+  weight_decay: 0.01
+
+# CosineAnnealingLR: deterministic cosine decay over the full run (epoch-level).
+# Replaces ReduceLROnPlateau — being fold-identical (no plateau detection on the
+# noisy carved-val signal), per-epoch metric curves stay aligned across folds for
+# aggregation, and the LR is decoupled from the (noisy) monitor stream. `T_max`
+# spans all epochs; `eta_min` is the LR floor (mirrors the old plateau `min_lr`).
+# No `monitor` — the schedule is epoch-driven, not metric-driven. run.py first
+# tries scheduler_factory(optimizer, total_steps=...); CosineAnnealingLR rejects
+# total_steps (TypeError) so it falls back to scheduler_factory(optimizer),
+# honoring the config-supplied `T_max`.
+scheduler:
+  _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+  _partial_: true
+  T_max: ${misc.epochs}
+  eta_min: 1.0e-7
+scheduler_config:
+  interval: epoch
+  frequency: 1
+
+sched_name: cos
+# Optimizer/LR are added to the slug ONLY when changed from the defaults
+# (AdamW, lr=5e-5) via the `opt_tag` resolver — so existing artifacts/W&B runs
+# keep their slug, while a changed optimizer/lr lands in its own dir. weight_decay
+# stays unconditional (legacy runs already carry `_wd=0.01`).
+hp_tag: _sched=${sched_name}${opt_tag:${optimizer._target_},${optimizer.lr}}_wd=${optimizer.weight_decay}

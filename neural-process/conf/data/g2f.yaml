@@ -1,0 +1,266 @@
+# @package _global_
+# G2F dataset / dataloader / params. `# @package _global_` is required —
+# runtime consumers read these keys at the cfg root. Full per-processor
+# contract: utils/data/processing/README.md.
+
+dataset:
+  _target_: utils.data.G2FDataset
+  data_dir: ./dataset-files/g2f/Pedigrees_Wide_Format_BLUEs
+  validate: true
+  case_sensitive: false
+  delete_invalid: true
+  to_tensor: true
+  random_state: 0
+  # Per-key z-score from train stats. weather_concat_values toggles the
+  # weather tail appended to `channels` (consulted only when weather_concat on).
+  normalize:
+    dap: true
+    channels: true
+    weather_concat_values: true
+    yield_value: false
+  # Test fold set per run via CLI test_filter_columns=[{Env: DEH1},{Year: 2020}].
+  # Ratio zeroed so the filter defines the split (avoids a spurious warning).
+  test_filter_columns: []
+  test_ratio: 0
+  # Dedicated seed for the DL val carve (eval-streams) — decoupled
+  # from misc.seed (model init / batch shuffle) and random_state (smoke
+  # subsample / legacy ratio split). Fix val_seed, vary misc.seed → the
+  # same validation set across randomizations.
+  val_seed: 0
+
+  # Evaluation streams (DL eval-streams plan): the default base bundle — an
+  # IID `random` carve (the monitor; replaces the legacy `val_ratio`) plus a
+  # `test` observe probe (the PREDICT rows, observe-only). This inline
+  # list is the minimal default; the `+eval_streams=<bundle>` groups
+  # REPLACE it wholesale (adding checkpoint_metrics and spearman on the
+  # test probe — see conf/eval_streams/). predict-mode (eval.py) clears
+  # this so CV2 scores over every retained FIT row.
+  eval_streams:
+    - name: val
+      source: carve
+      strategy: { name: random, frac: 0.1 }
+      monitor: true
+      monitor_metric: pearson_r
+      monitor_mode: max
+      metrics: [rmse, pearson_r, spearman_r, loglik]
+    - name: test
+      source: observe
+      selector: { name: role, role: PREDICT }
+      monitor: false
+      metrics: [rmse, pearson_r, loglik]
+
+  # DL set-encoder views: coords vs channels per peer. `main` =
+  # DAP + all VIs (legacy VI branch); `weather` = raw_weather's daily grid.
+  # collate assembles every target:dl view; a view whose owning processor is
+  # disabled is dropped. conf/axis/* override coords / add views.
+  views:
+    main:
+      coords: [dap]
+      channels: ["vi.*"]
+      transform: identity
+      transform_args: {}
+      target: dl
+    weather:                  # inert unless raw_weather is enabled (owner-gated)
+      coords: [weather_dap]
+      channels: ["weather.*"]
+      transform: identity
+      transform_args: {}
+      target: dl
+
+  # Feature processors — all disabled by default; enable to compute features.
+  processing:
+    # Derived time axes (gdd/agdd) from daily weather; runs first (priority -1)
+    # so FPCA/View consumers can read sample["agdd"]. AGDD = cumsum(GDD).
+    axis_source:
+      enabled: false
+      csv_path: ./dataset-files/g2f/EnvRtype_Weather_Data_Cleaned_V2.csv
+      gdd:
+        source: column        # column (CSV GDD, reference-exact) | recompute (Tmax/Tmin)
+        column: GDD
+        t_base: 10            # recompute only
+        t_cap: null           # recompute only
+        tmax_col: T2M_MAX
+        tmin_col: T2M_MIN
+      produce: [gdd, agdd]
+      dedup: true             # deduped clean-AGDD grid (weather-FPCA agdd path)
+      # true: VI on the R reference's deduped dap.gdd scale + NaN-drop on collapsed DAPs
+      # (bit-exact AGDD env-GxE/weather-GxE). false: full-grid raw cumsum. Needs dedup:true.
+      vi_dedup: false
+
+    # Metadata one-hots. fit_scope: all|train (all is leakage-safe — pre-yield).
+    metadata_features:
+      enabled: false
+      fit_scope: all
+      sources: []             # e.g. [{column: Env.Year}]
+
+    # VI FPCA via R fdapace. vi_subset / n_components are post-load slices (never
+    # re-invoke R). fit_vars is the COMPUTE set: which VIs R actually fits FPCA
+    # on (channels column-sliced before the fit); null = every VI (re-invokes R
+    # if changed; folded into the cache key). vi_subset (emit) ⊆ fit_vars.
+    # missing_values: skip|interpolate (skip = the R reference). axis: dap|gdd|agdd
+    # (non-dap needs axis_source). channels / transform / transform_args drive
+    # non-trivial FPCA views (set by conf/axis/*).
+    vi_fpca:
+      enabled: false
+      n_components: 4
+      fit_vars: null
+      vi_subset: null
+      missing_values: skip
+      axis: dap
+      channels: [vi.*]
+      transform: identity
+      transform_args: {}
+
+    # DL-only raw-VI column slice (in place), driven by the vi_subset group.
+    # Distinct from vi_fpca.vi_subset (post-fit score slice) — never co-run.
+    raw_vi:
+      enabled: false
+      vi_subset: null
+
+    weather_concat:
+      enabled: false
+      csv_path: ./dataset-files/g2f/EnvRtype_Weather_Data_Cleaned_V2.csv
+      weather_vars: null
+
+    # Weather FPCA. fit_scope: train (inductive: project held-out env onto the
+    # train basis). scaling: none|global_zscore (train-only). axis: dap|agdd
+    # (agdd = deduped clean-AGDD grid); weather_kernel inherits the axis.
+    weather_fpca:
+      enabled: false
+      csv_path: ./dataset-files/g2f/EnvRtype_Weather_Data_Cleaned_V2.csv
+      n_components: 4
+      # fit_vars: which variables FPCA is computed for (the fit set);
+      # null = every CSV column. Restrict it (e.g. [PTR]) where the fit is
+      # expensive — notably the AGDD axis, whose cost is per-variable.
+      fit_vars: null
+      # emit_vars: which variables' scores are sliced out downstream (the
+      # emit set); null = every variable in the fit set. Post-load slice,
+      # not part of the cache key. Must be a subset of the fit set.
+      emit_vars: null
+      fit_scope: train
+      scaling: none
+      axis: dap
+      # missing_values: drop|ffill. "drop" (default) is the R reference:
+      # NaN cells stay NaN and fdapace removes them per curve, so a missing
+      # day is a GAP. "ffill" forward/back-fills within each env, feeding
+      # fdapace fabricated observations — the previous behaviour, kept
+      # only for consumers needing a gap-free grid (the DL raw-weather
+      # encoder pins it explicitly). Only PTR and PAR_TEMP carry NaNs in
+      # the shipped CSV, so the modes agree on every other variable.
+      missing_values: drop
+      dedup: true
+      gdd:
+        source: column
+        column: GDD
+        t_base: 10
+        t_cap: null
+        tmax_col: T2M_MAX
+        tmin_col: T2M_MIN
+
+    # Env kernel K_W from weather_fpc_scores. center_kernel: false = BGLR-parity
+    # (slug _uc). Per-source scaling: none|global_zscore (train-only).
+    weather_kernel:
+      enabled: false
+      center_kernel: false
+      sources: []
+
+    # Raw daily weather curves → the `weather` set-encoder view. Per-axis
+    # scaling: global_zscore|none (train-only). axis: dap|agdd (mirrors
+    # weather_fpca; weather_dap coord carries AGDD when agdd).
+    # extra_axes: subset of [gdd, agdd] attached as `weather_gdd`/`weather_agdd`
+    # columns on the native daily grid (un-deduped raw cumsum) so the weather
+    # set-encoder can take them as extra channels/coords (raw_weather axis=dap only; DL,
+    # no dedup). extra_axes_scaling: global_zscore|none (train-only).
+    raw_weather:
+      enabled: false
+      csv_path: ./dataset-files/g2f/EnvRtype_Weather_Data_Cleaned_V2.csv
+      weather_vars: null
+      dap_scaling: global_zscore
+      value_scaling: global_zscore
+      axis: dap
+      dedup: true
+      extra_axes: []
+      extra_axes_scaling: global_zscore
+      gdd:
+        source: column
+        column: GDD
+        t_base: 10
+        t_cap: null
+        tmax_col: T2M_MAX
+        tmin_col: T2M_MIN
+
+    # VanRaden/Vitezica GRM. fit_scope: all (leakage-safe — genotype pre-plant).
+    # center_kernel: false = BGLR-parity (slug _uc).
+    genomic:
+      enabled: false
+      csv_path: ./dataset-files/g2f/G2F_2020_2021_Genomic_Data.csv
+      fit_scope: all
+      center_kernel: false
+      sources: []
+
+    # Phenomic kernel KP over vi_fpc_scores. center_kernel: false = BGLR-parity.
+    phenomic:
+      enabled: false
+      kernel: linear
+      gamma: auto
+      center_kernel: false
+      sources: []
+
+    # Env-similarity kernel from aggregated weather. weather_vars: null = all.
+    # axis: dap|agdd (agdd aggregates over the deduped grid). center_kernel:
+    # false = BGLR-parity.
+    enviromic:
+      enabled: false
+      csv_path: ./dataset-files/g2f/EnvRtype_Weather_Data_Cleaned_V2.csv
+      # fit_scope: train — leakage-safe: a held-out env's weather (future
+      # year / new location) is not available at deployment, so it must not
+      # enter the kernel fit. ("all" is transductive / reference-parity only.)
+      fit_scope: train
+      center_kernel: false
+      weather_vars: null
+      axis: dap
+      dedup: true
+      gdd:
+        source: column
+        column: GDD
+        t_base: 10
+        t_cap: null
+        tmax_col: T2M_MAX
+        tmin_col: T2M_MIN
+      sources: []
+
+    # Hadamard-of-kernels over derived features (each source: components:[...]).
+    # Per-source fit_scope: train|all (all rejected for *_relmat_rows).
+    # center_kernel: false = BGLR-parity.
+    interaction:
+      enabled: false
+      center_kernel: false
+      sources: []
+
+dataloader:
+  pad_value: 0.0
+  # batch_size is a pure memory knob — val/test epoch metrics are pooled
+  # (batch-size invariant); null = whole split in one batch.
+  train:
+    batch_size: 64
+    num_workers: 1
+    pin_memory: true
+    shuffle: true
+    drop_last: false
+  val:
+    batch_size: 8192
+    num_workers: 1
+    pin_memory: true
+    shuffle: false
+    drop_last: false
+  test:
+    batch_size: 8192
+    num_workers: 1
+    pin_memory: true
+    shuffle: false
+    drop_last: false
+
+params:
+  x_dim: 1
+  y_dim: 37
+  s_dim: 1

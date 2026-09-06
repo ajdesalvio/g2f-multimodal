@@ -1,0 +1,20 @@
+# @package _global_
+# `axis=fpca_t-agdd_warp`: warped FDA — the `warp` transform reparametrises
+# the VI curve from DAP onto AGDD (monotone; agdd selected into channels is
+# consumed as the new time axis, not a VI block). Scenario: "warped FDA".
+dataset:
+  processing:
+    axis_source:
+      enabled: true
+    vi_fpca:
+      axis: dap
+      channels: [vi.*, agdd]
+      transform: warp
+      transform_args:
+        from: dap
+        to: agdd
+
+# Warp reparametrises the VI curve onto AGDD (agdd consumed as the new time
+# axis, not a VI channel) → `vi.t=agdd-warp`.
+vi_time: agdd-warp
+vi_aug: ""

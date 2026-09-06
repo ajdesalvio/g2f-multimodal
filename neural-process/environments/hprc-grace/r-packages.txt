@@ -1,0 +1,103 @@
+# R packages installed in R_LIBS_USER on HPRC Grace.
+# Location: /scratch/user/$USER/neural-processes/env/r_libs
+# Base R: 4.4.1 (from the R/4.4.1 Lmod module)
+# Captured from `installed.packages()` on the live cluster on 2026-08-19.
+#
+# PATCHED BUILD: the installed BGLR 1.1.4 is NOT stock CRAN. It carries a
+# one-line source patch (R/BGLR.R: `LT$V = LT$V[, tmp, drop = FALSE]`) so BGLR
+# can fit rank-1 RKHS kernels (weather-GxE's weather kernel,
+# weather_fpca.n_components=1) instead of aborting with
+# "invalid 'times' argument". The version string below still reads 1.1.4.
+# Verified live on 2026-08-19:
+#   Rscript -e 'library(BGLR); cat(grep("drop", deparse(BGLR:::setLT.RKHS), value=TRUE))'
+#   # -> LT$V = LT$V[, tmp, drop = FALSE]
+# Apply/re-apply via ../../scripts/patch_bglr.sh (see
+# ../../baselines/R_HPC_SETUP.md). NOTE: regenerating this file from
+# installed.packages() will drop this annotation — re-add it.
+
+Package        Version
+backports      1.5.0
+BGLR           1.1.4
+bit            4.6.0
+bit64          4.8.0
+blob           1.3.0
+broom          1.0.12
+checkmate      2.3.4
+cluster        2.1.8.2
+colorspace     2.1-2
+covr           3.6.5
+data.table     1.18.2.1
+DBI            1.3.0
+dbplyr         2.5.2
+dplyr          1.2.1
+enhancer       1.1.1
+farver         2.1.2
+fdapace        0.6.0
+foreign        0.8-91
+Formula        1.2-5
+generics       0.1.4
+getopt         1.20.4
+ggplot2        4.0.2
+gridExtra      2.3
+gtable         0.3.6
+Hmisc          5.2-5
+htmlTable      2.4.3
+isoband        0.3.0
+jsonlite       2.0.0
+labeling       0.4.3
+Lahman         14.0-0
+lattice        0.22-9
+lifecycle      1.0.5
+lobstr         1.2.1
+MASS           7.3-65
+Matrix         1.7-4
+nnet           7.3-20
+numDeriv       2016.8-1.1
+nycflights13   1.0.2
+optparse       1.7.5
+orthopolynom   1.0-6.1
+plyr           1.8.9
+polynom        1.4-1
+pracma         2.4.6
+pROC           1.19.0.1
+RColorBrewer   1.1-3
+Rcpp           1.1.1-1.1
+RcppArmadillo  15.2.7-1
+RcppEigen      0.3.4.0.2
+RcppProgress   0.4.2
+rex            1.2.2
+rlang          1.2.0
+rpart          4.1.24
+RSpectra       0.16-2
+RSQLite        3.52.0
+S7             0.2.1
+scales         1.4.0
+sommer         4.4.5
+survival       3.8-6
+tidyr          1.3.2
+tidyselect     1.2.1
+truncnorm      1.0-9
+vctrs          0.7.3
+viridisLite    0.4.3
+
+# Direct dependencies used by this repository:
+#   fdapace  — sparse FPCA, called from baselines/fpca_compute.R by the
+#              vi_fpca and weather_fpca processors under
+#              utils/data/processing/
+#   optparse — CLI argument parsing in fpca_compute.R / bglr_compute.R /
+#              gblup_compute.R
+#   BGLR     — multi-kernel Bayesian RKHS via Gibbs sampler, called from
+#              baselines/bglr_compute.R by the bglr regressor in
+#              baselines/regressors.py. Pulls truncnorm + pROC as direct
+#              deps (MASS already present from fdapace's transitive set).
+#   sommer   — multi-kernel REML/BLUP (`sommer::mmer`), called from
+#              baselines/gblup_compute.R by the gblup regressor. Pulls the
+#              Rcpp / RcppArmadillo / RcppProgress build chain.
+#   jsonlite — manifest / metadata interchange between the Python
+#              regressor wrappers and bglr_compute.R / gblup_compute.R.
+#
+# Everything else is either a transitive dependency pulled in by fdapace
+# (Hmisc, pracma, RcppEigen, ...) / BGLR / sommer, or an unrelated package
+# installed in the same shared R_LIBS_USER for other work (dplyr, tidyr,
+# nycflights13, Lahman, covr, ...). The unrelated ones are listed because
+# this file is a faithful snapshot of the library, not an install list.

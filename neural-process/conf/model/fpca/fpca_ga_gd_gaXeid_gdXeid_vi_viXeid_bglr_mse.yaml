@@ -1,0 +1,31 @@
+# @package _global_
+#
+# env-GxE MINUS the environment one-hot BRR block (Z_e) — the env-FREE counterpart
+# of fpca_eid_ga_gd_gaXeid_gdXeid_vi_viXeid_bglr_mse and the weather-free kernel
+# model as reported (K_GA, K_GD, K_GE_A, K_GE_D, K_P, K_PE; no env main effect).
+# Mirrors the env-free weather-GxE (fpca_ga_gd_gaXwthr_...): inherit the
+# env-bearing env-GxE and drop ONLY the BRR block. The env one-hot FEATURE is
+# still built because the G×E / P×E interaction kernels are Hadamards with
+# Z_E Z_E^T; it just no longer enters ETA on its own.
+#
+# Purpose: a weather-free kernel model on identical splits, to separate
+# weather-specific effects from the rest of the pipeline when comparing
+# against the TNP or the R reference split by split.
+defaults:
+  - fpca_eid_ga_gd_gaXeid_gdXeid_vi_viXeid_bglr_mse
+  - _self_
+
+regressor:
+  # env-GxE's ETA minus the trailing env_onehot (Hydra REPLACES the list).
+  feature_keys:
+    - genomic_add
+    - genomic_dom
+    - gxea
+    - gxed
+    - phenomic_relmat
+    - pxe
+  env_brr_key: null
+
+# No env one-hot main effect ⇒ no leading `eid` peer (the interactions keep
+# their `Xeid` tokens).
+model_name: fpca_ga.rank=full.uc_gaXeid.rank=full_gd.rank=full.uc_gdXeid.rank=full_vi.t=${vi_time}.c=${vi_chan}${vi_aug}.k=5.s=wez.rank=full.uc_viXeid.rank=full_bglr_loss=mse

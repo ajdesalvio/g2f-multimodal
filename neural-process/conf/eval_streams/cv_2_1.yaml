@@ -1,0 +1,45 @@
+# @package _global_
+#
+# cv_2_1 eval-stream bundle — compose with `+cv_spec=cv_2_1 +eval_streams=cv_2_1`.
+# NB: the `+` prefix is required — `eval_streams` is not (yet) in any defaults
+# list, so the bare `eval_streams=cv_2_1` override raises a Hydra "no match in
+# the defaults list" error.
+# OOD validation via a `grouped_variety` carve (unseen genotypes), plus the two
+# scenario subset probes: CV1 (untested lines, held-out fold = PREDICT) and CV2
+# (tested lines, in-sample over the retained FIT rows). NOTE: `cv2` evaluates on
+# rows the model trains on — read it as an in-sample probe, never as a held-out
+# metric, and never equal to eval.py's block-weighted CV2 score (B12).
+# Self-contained (full list — no list-inheritance).
+#
+# eval_tag: the monitor val-carve slug tag (root key; baked into model_slug /
+# model_run_name so this carve is distinguishable from other carves in the
+# artifact dir + W&B). KEEP IN SYNC with the val strategy below (grouped_variety
+# n_groups=30 → gv30); survives eval.py's predict-mode eval_streams clearing.
+eval_tag: "_val=gv30"
+dataset:
+  eval_streams:
+    - name: val
+      source: carve
+      strategy: { name: grouped_variety, n_groups: 30 }   # OOD: unseen genotypes (~9% of a fold train pool)
+      monitor: true
+      monitor_metric: pearson_r     # PRIMARY → early stop + plateau LR + metrics.json
+      monitor_mode: max
+      # One best_<metric>.ckpt (+ best_frozen_<metric>.ckpt under freeze) per
+      # entry; modes from the metric registry (rmse=min, others=max). Subset of
+      # `metrics`. Omit → defaults to just [monitor_metric].
+      checkpoint_metrics: [pearson_r, rmse, loglik]
+      metrics: [rmse, pearson_r, spearman_r, loglik]
+    - name: cv1                 # untested lines, held-out fold (PREDICT)
+      source: observe
+      selector: { name: cv1 }
+      monitor: false
+      metrics: [rmse, pearson_r, spearman_r, loglik]
+    - name: cv2                 # tested lines, in-sample over retained FIT rows
+      source: observe
+      selector: { name: cv2 }
+      monitor: false
+      # cv2 rows are DELIBERATELY in the eval context (a reconstruction / in-
+      # sample probe for the NP): exempt from the context∩query disjointness
+      # guard. Read cv2 as in-sample, never as a held-out metric.
+      in_sample: true
+      metrics: [rmse, pearson_r, spearman_r, loglik]

@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "g2f-multimodal"
+version = "0.1.0"
+description = "Multimodal crop yield prediction on Genomes to Fields (G2F) data: set-based deep learning models and FPCA/BGLR baselines"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+# Version ranges bracket the two environments this repo actually runs in —
+# the Grace HPC training venv (py3.11, torch 2.5.1, ...) and local dev
+# (py3.13, torch 2.6.0, ...) — so neither needs reinstalling. Upper bounds
+# exclude bleeding-edge releases (e.g. torch 2.13 changed CosineAnnealingLR
+# last_epoch reconstruction and broke scheduler resume); without them a
+# fresh install picks whatever is newest and drifts from what we ran on.
+dependencies = [
+    "torch>=2.5,<2.7",
+    "lightning>=2.5,<2.6",
+    "scikit-learn>=1.6,<1.7",
+    "scipy>=1.14,<1.16",
+    "numpy>=2.2,<2.3",
+    "pandas>=2.2,<2.3",
+    "omegaconf>=2.3,<2.4",
+    "hydra-core>=1.3,<1.4",
+    "wandb>=0.25,<0.26",
+    "einops>=0.8,<0.9",
+    "tqdm>=4.66,<5",
+    "joblib>=1.3,<2",
+    "psutil>=6.1,<8",
+]
+
+# Explicit package discovery — the repo uses a flat layout with several
+# top-level source packages (some are implicit namespace packages without
+# __init__.py). Auto-discovery refuses a flat layout with multiple packages,
+# so we list them explicitly. `namespaces = true` includes the ones lacking
+# __init__.py (set_func, utils, scripts).
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["set_func*", "baselines*", "cv*", "conf*", "scripts*", "utils*"]
+namespaces = true
+

@@ -1,0 +1,28 @@
+# @package _global_
+#
+# PTR-only weather subset — matches the R reference's env-GxE/weather-GxE LOEO setup
+# (`Weather_FPC_Scores_{DAP,AGDD}_LOEO_Projected.csv` from the V2
+# bundle both contain FPC scores for PTR only). PTR = photothermal
+# ratio; see `EnvRType_Weather_Variable_Descriptions.xlsx`. Pulled via
+# `weather_subset=ptr`; pairs with `vi_subset=ngrdi` for the full
+# env-GxE/weather-GxE reproduction.
+
+dataset:
+  processing:
+    weather_fpca:
+      # fit set (COMPUTE) — R only fits FPCA on PTR, so we don't pay to
+      # compute the other ~41 weather variables we never use (the cost is
+      # per-variable, especially on the AGDD axis). The emit/slice set
+      # (post-load — what FPC scores reach downstream) must be ⊆ fit set.
+      # Per-variable FPCA independence makes restricting the fit
+      # bit-identical to fit-all-then-slice.
+      fit_vars: [PTR]
+      emit_vars: [PTR]
+    enviromic:
+      weather_vars: [PTR]
+    weather_concat:
+      weather_vars: [PTR]
+    raw_weather:
+      weather_vars: [PTR]
+
+wthr_chan: ptr

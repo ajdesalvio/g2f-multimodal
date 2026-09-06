@@ -1,0 +1,19 @@
+# @package _global_
+#
+# R-analog composer for fpca_ga_gd_vi_bglr_mse (G+P main-effects) — the
+# env-identity-free / GxE-free reduction of env-GxE
+# (fpca_eid_ga_gd_gaXeid_gdXeid_vi_viXeid_bglr_mse). Feature content =
+# genomic additive + dominance + VI phenomic, matching the weather-free DL
+# `vi_ga_gd` trio for the random_kfold (in-distribution) like-for-like
+# capacity comparison. Genomic kernels uncentered (R-reference parity on K_D).
+defaults:
+  - /optim: none
+  - /data: g2f
+  - /model/fpca: fpca_ga_gd_vi_bglr_mse
+  # NGRDI is the single VI (vi_subset=ngrdi sets vi_fpca.fit_vars=[NGRDI] so R
+  # only fits that VI). weather_subset=ptr is inert here (main-effects has no weather
+  # processors enabled) but kept for parity with the env-GxE composer.
+  - /vi_subset: ngrdi
+  - /weather_subset: ptr
+  - /axis: shared_t-dap
+  - _self_

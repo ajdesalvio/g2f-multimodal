@@ -1,0 +1,17 @@
+# @package _global_
+#
+# R-analog composer for fpca_eid_ga_gd_gaXeid_gdXeid_vi_viXeid_bglr_mse
+# (env-GxE at K=5 VI FPCs, with genomic kernels uncentered for
+# strict R-reference parity on K_D).
+defaults:
+  - /optim: none
+  - /data: g2f
+  - /model/fpca: fpca_eid_ga_gd_gaXeid_gdXeid_vi_viXeid_bglr_mse
+  # The R reference's env-GxE uses NGRDI as the single VI and PTR as the single
+  # weather variable. Hardcoded here so the experiment composer
+  # intrinsically reproduces the R reference without relying on submit-script
+  # env overrides.
+  - /vi_subset: ngrdi
+  - /weather_subset: ptr
+  - /axis: shared_t-dap
+  - _self_

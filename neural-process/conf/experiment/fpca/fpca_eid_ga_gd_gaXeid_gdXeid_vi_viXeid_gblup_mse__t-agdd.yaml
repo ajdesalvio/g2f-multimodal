@@ -1,0 +1,15 @@
+# @package _global_
+# Frequentist-twin env-GxE over the AGDD time axis — the AGDD twin of
+# fpca_eid_ga_gd_gaXeid_gdXeid_vi_viXeid_gblup_mse (REML/BLUP via sommer).
+# Same model; `/axis: shared_t-agdd` swaps the fdapace time coordinate
+# DAP→AGDD (VI on the deduped dap.gdd scale + NaN-drop of collapsed DAPs,
+# vi_dedup) and tags the per-encoder time token `vi.t=agdd`. Pairs against
+# fpca_eid_ga_gd_gaXeid_gdXeid_vi_viXeid_bglr_mse__t-agdd.
+defaults:
+  - /optim: none
+  - /data: g2f
+  - /model/fpca: fpca_eid_ga_gd_gaXeid_gdXeid_vi_viXeid_gblup_mse
+  - /vi_subset: ngrdi
+  - /weather_subset: ptr
+  - /axis: shared_t-agdd
+  - _self_
