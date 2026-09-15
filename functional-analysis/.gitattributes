@@ -1,0 +1,30 @@
+* text eol=lf
+
+*.R text eol=lf
+*.Rmd text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.txt text eol=lf
+# Preserve exact published CSV bytes and recorded checksums.
+*.csv -text
+*.tsv text eol=lf
+
+*.xlsx binary
+*.xls binary
+*.rds binary
+*.RData binary
+*.pdf binary
+*.pptx binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.tif binary
+*.tiff binary
+
+# Preserve archived publication artifacts (including original SVG exports and
+# regenerated session records) byte-for-byte across platforms.
+results/** -text
+results/**/README.md text eol=lf

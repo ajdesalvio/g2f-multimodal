@@ -1,0 +1,31 @@
+name: Validate functional analysis
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static-validation:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functional-analysis
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "4.4.2"
+      - name: Parse R and CSV files
+        run: Rscript scripts/validate_repository.R
+      - name: Check shell syntax
+        shell: bash
+        run: find scripts -type f -name '*.sh' -print0 | xargs -0 -r -n1 bash -n
+      - name: Parse Python files
+        run: python -m compileall -q scripts
+      - name: Verify manifests and SHA-256 checksums
+        run: python scripts/validate_manifests.py
+      - name: Check final results and documentation links
+        run: python scripts/validate_release.py

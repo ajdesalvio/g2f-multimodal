@@ -1,0 +1,74 @@
+cff-version: 1.2.0
+message: "If you use this code or the accompanying data, please cite the manuscript and this repository."
+title: "An open field phenomics resource for multimodal maize yield prediction across divergent environments"
+type: software
+version: 0.1.0
+authors:
+  - family-names: DeSalvio
+    given-names: Aaron J.
+  - family-names: Mohseni
+    given-names: Peiman
+  - family-names: Adak
+    given-names: Alper
+  - family-names: Wong
+    given-names: Raymond K. W.
+  - family-names: Winans
+    given-names: Noah D.
+  - family-names: Arik
+    given-names: Mustafa A.
+  - family-names: Murray
+    given-names: Seth C.
+  - family-names: Jung
+    given-names: Jinha
+  - family-names: Duffield
+    given-names: Nick
+  - family-names: Lima
+    given-names: Dayane C.
+  - family-names: Aviles
+    given-names: Alejandro C.
+  - family-names: Alpers
+    given-names: Ryan T.
+  - family-names: Costa
+    given-names: Martin
+  - family-names: Kaeppler
+    given-names: Shawn M.
+  - family-names: Ertl
+    given-names: David
+  - family-names: Romay
+    given-names: Maria Cinta
+  - family-names: Holland
+    given-names: James
+  - family-names: Buckler
+    given-names: Edward
+  - family-names: Edwards
+    given-names: Jode
+  - family-names: Flint-Garcia
+    given-names: Sherry
+  - family-names: Gore
+    given-names: Michael A.
+  - family-names: Hirsch
+    given-names: Candice N.
+  - family-names: Schnable
+    given-names: James C.
+  - family-names: Singh
+    given-names: Maninder P.
+  - family-names: Sparks
+    given-names: Erin E.
+  - family-names: Thompson
+    given-names: Addie
+  - family-names: Washburn
+    given-names: Jacob D.
+  - family-names: Miller
+    given-names: Jarrod
+  - family-names: Weldekidan
+    given-names: Teclemariam
+  - family-names: de Leon
+    given-names: Natalia
+repository-code: "https://github.com/ajdesalvio/g2f-multimodal"
+url: "https://github.com/ajdesalvio/g2f-multimodal"
+keywords:
+  - maize
+  - functional principal component analysis
+  - multimodal prediction
+  - high-throughput phenotyping
+  - quantitative trait loci

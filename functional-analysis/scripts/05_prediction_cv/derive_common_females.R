@@ -1,0 +1,15 @@
+# Recreate the canonical maternal-line intersection from the matched phenotype data.
+project_dir <- Sys.getenv("G2F_PROJECT_DIR", unset = getwd())
+source(file.path(project_dir, "R", "utils", "paths.R"))
+paths <- g2f_paths()
+pheno <- readRDS(g2f_resolve_input(paths, "Pheno_Data.rds", "03_genomics"))
+female <- trimws(sub("/.*$", "", as.character(pheno$Pedigree.Env)))
+by_environment <- split(female, as.character(pheno$Env))
+common <- sort(unique(Reduce(intersect, by_environment)))
+stopifnot(length(by_environment) == 19L, length(common) == 223L,
+          !anyNA(common), all(nzchar(common)))
+reference <- read.csv(file.path(project_dir, "data", "supplementary", "Common_Females.csv"))
+stopifnot(identical(common, sort(trimws(as.character(reference$Female)))))
+out <- g2f_results_dir(paths, "prediction", "splits")
+write.csv(data.frame(Female = common), file.path(out, "Common_Females.csv"), row.names = FALSE)
+message("Validated all 223 canonical maternal lines across 19 environments.")

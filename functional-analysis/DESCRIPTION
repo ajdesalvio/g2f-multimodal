@@ -1,0 +1,78 @@
+Package: g2fmultimodal
+Type: Project
+Title: An Open Field Phenomics Resource for Multimodal Maize Yield
+    Prediction Across Divergent Environments
+Version: 0.1.0
+Authors@R: c(
+    person("Aaron J.", "DeSalvio", role = "aut"),
+    person("Peiman", "Mohseni", role = "aut"),
+    person("Alper", "Adak", role = "aut"),
+    person("Raymond K. W.", "Wong", role = "aut"),
+    person("Noah D.", "Winans", role = "aut"),
+    person("Mustafa A.", "Arik", role = "aut"),
+    person("Seth C.", "Murray", role = "aut"),
+    person("Jinha", "Jung", role = "aut"),
+    person("Nick", "Duffield", role = "aut"),
+    person("Dayane C.", "Lima", role = "aut"),
+    person("Alejandro C.", "Aviles", role = "aut"),
+    person("Ryan T.", "Alpers", role = "aut"),
+    person("Martin", "Costa", role = "aut"),
+    person("Shawn M.", "Kaeppler", role = "aut"),
+    person("David", "Ertl", role = "aut"),
+    person("Maria Cinta", "Romay", role = "aut"),
+    person("James", "Holland", role = "aut"),
+    person("Edward", "Buckler", role = "aut"),
+    person("Jode", "Edwards", role = "aut"),
+    person("Sherry", "Flint-Garcia", role = "aut"),
+    person("Michael A.", "Gore", role = "aut"),
+    person("Candice N.", "Hirsch", role = "aut"),
+    person("James C.", "Schnable", role = "aut"),
+    person("Maninder P.", "Singh", role = "aut"),
+    person("Erin E.", "Sparks", role = "aut"),
+    person("Addie", "Thompson", role = "aut"),
+    person("Jacob D.", "Washburn", role = "aut"),
+    person("Jarrod", "Miller", role = "aut"),
+    person("Teclemariam", "Weldekidan", role = "aut"),
+    person("Natalia", "de Leon", role = "aut")
+    )
+Description: Reproducible analysis workflows supporting a manuscript on
+    genomic, phenomic, and enviromic signals for maize yield prediction.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends:
+    R (>= 4.4.2)
+Imports:
+    AGHmatrix,
+    BGLR,
+    cowplot,
+    data.table,
+    dplyr,
+    EnvRtype,
+    fastmatrix,
+    fdapace,
+    ggh4x,
+    ggnewscale,
+    ggplot2,
+    gridExtra,
+    jsonlite,
+    lme4,
+    lmerTest,
+    lubridate,
+    MuMIn,
+    pracma,
+    qtl2,
+    RColorBrewer,
+    readr,
+    readxl,
+    RhpcBLASctl,
+    rTASSEL,
+    scales,
+    SNPRelate,
+    stringr,
+    terra,
+    tidyr,
+    yaml
+Suggests:
+    renv
+URL: https://github.com/ajdesalvio/g2f-multimodal
+BugReports: https://github.com/ajdesalvio/g2f-multimodal/issues

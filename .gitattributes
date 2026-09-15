@@ -1,0 +1,6 @@
+# Shared metadata only; leave the sibling TNP workflow's attributes unchanged.
+/README.md text eol=lf
+/LICENSING.md text eol=lf
+/CITATION.cff text eol=lf
+/.github/** text eol=lf
+/.gitattributes text eol=lf

@@ -1,0 +1,10 @@
+dependency_id,status,expected_location,description
+cv_dap_noze,available_external,configured results root,"Final DAP-domain no-Ze CV task outputs; compact summaries are tracked"
+cv_agdd_noze,available_external,configured results root,"Final AGDD-domain no-Ze CV task outputs; compact summaries are tracked"
+loeo_dap_noze,available_external,configured results root,"Final DAP-domain no-Ze LOEO task outputs; compact summaries are tracked"
+loeo_agdd_noze,available_external,configured results root,"Final AGDD-domain no-Ze LOEO task outputs; compact summaries are tracked"
+qtl_task_rds,available_external,configured DAP and AGDD QTL output directories,"All 58 manuscript scan objects archived and checksummed locally; external deposit pending; see data/QTL_SCAN_ARCHIVE.md"
+qtl_flowering_yield_rds,optional_author_retained,configured flowering/yield QTL output directory,"Scan objects are not included in the external inventory; required only to regenerate the supplementary flowering/yield analyses"
+patched_bglr,verified_local,external software archive,"BGLR_Mod_4.4.2.tar.gz contains patched BGLR 1.1.5 built with R 4.4.2; public archive access pending"
+tnp_training_code,included_in_sibling_workflow,neural-process/,"Transformer neural process training and preprocessing implementation; the retained metric export has not been independently regenerated from this workflow"
+dryad_doi,pending_submission,docs/DATA_AVAILABILITY.md,"Dryad DOI and file-level URLs"

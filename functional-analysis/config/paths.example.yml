@@ -1,0 +1,13 @@
+# Copy this file to config/paths.yml and edit the local values.
+# config/paths.yml is ignored by Git.
+
+project:
+  data_dir: "path/to/g2f-multimodal-data"
+  results_dir: "path/to/g2f-multimodal-results"
+
+prediction:
+  include_ze: false
+  vi_names:
+    - "NGRDI"
+  weather_traits:
+    - "PTR"

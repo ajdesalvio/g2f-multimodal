@@ -1,0 +1,49 @@
+# R session and IDE files
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local configuration and credentials
+config/paths.yml
+.env
+*.key
+*.pem
+
+# Large or generated data
+data/raw/**
+!data/raw/README.md
+data/intermediate/**
+!data/intermediate/README.md
+data/external/**
+!data/external/README.md
+
+# Raw HPRC downloads and generated run artifacts
+*.tar.gz
+*.tar
+*.zip
+*QTL.Outputs.rds
+results/hprc_raw/**
+!results/hprc_raw/README.md
+results/work/**
+logs/
+slurm-*.out
+slurm-*.err
+
+# BGLR run artifacts
+BGLR_*
+*.dat
+
+# Temporary files
+__pycache__/
+*.pyc
+*.tmp
+*.temp
+*.bak
+*~

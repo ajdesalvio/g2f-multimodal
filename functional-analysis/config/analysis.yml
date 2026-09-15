@@ -1,0 +1,109 @@
+# Scientific analysis choices retained for the manuscript workflow.
+# These values are version controlled; unlike config/paths.yml, they are not
+# machine-specific.
+
+weather:
+  max_drone_dap: 161
+  ptr_outlier_rule:
+    direction: "upper"
+    standard_deviation_multiplier: 3
+  par_temp_outlier_rule:
+    direction: "absolute"
+    standard_deviation_multiplier: 3
+  station_air_temperature:
+    - {environment: "MOH1.2020", min_dap: null, max_dap: 115}
+    - {environment: "TXH1.2020", min_dap: 52, max_dap: 138}
+    - {environment: "TXH2.2020", min_dap: 58, max_dap: 138}
+    - {environment: "TXH3.2020", min_dap: 25, max_dap: 110}
+    - {environment: "WIH1.2021", min_dap: 35, max_dap: null}
+    - {environment: "WIH2.2021", min_dap: 3, max_dap: null}
+    - {environment: "WIH3.2020", min_dap: 13, max_dap: null}
+  station_soil_temperature:
+    hampel:
+      environments:
+        - "MOH1.2020"
+        - "TXH1.2020"
+        - "TXH1.2021"
+        - "TXH2.2020"
+        - "TXH2.2021"
+        - "TXH3.2020"
+        - "TXH3.2021"
+        - "WIH1.2021"
+        - "WIH2.2021"
+      k: 6
+      t0: 1
+    dap_windows:
+      - {environment: "TXH1.2020", min_dap: 52, max_dap: null}
+      - {environment: "TXH1.2021", min_dap: 45, max_dap: null}
+      - {environment: "TXH2.2020", min_dap: 61, max_dap: null}
+      - {environment: "TXH3.2020", min_dap: 27, max_dap: null}
+      - {environment: "TXH3.2021", min_dap: 14, max_dap: null}
+      - {environment: "WIH1.2021", min_dap: 49, max_dap: null}
+      - {environment: "WIH2.2021", min_dap: 7, max_dap: null}
+
+drone:
+  environments:
+    - "DEH1.2020"
+    - "IAH4.2021"
+    - "MIH1.2020"
+    - "MNH1.2020"
+    - "MNH1.2021"
+    - "MOH1.2020"
+    - "NEH1.2021"
+    - "TXH1.2020"
+    - "TXH1.2021"
+    - "TXH2.2020"
+    - "TXH2.2021"
+    - "TXH3.2020"
+    - "TXH3.2021"
+    - "WIH1.2020"
+    - "WIH1.2021"
+    - "WIH2.2020"
+    - "WIH2.2021"
+    - "WIH3.2020"
+    - "WIH3.2021"
+  early_dap_environments:
+    - "MNH1.2020"
+    - "TXH1.2021"
+    - "TXH2.2021"
+    - "TXH3.2020"
+    - "TXH3.2021"
+  excluded_early_dap: [-33, -9, -3, 0, 1, 5]
+  excluded_altitudes: ["60m", "80m"]
+  excluded_global_dap: [121, 136, 151, 156, 163, 171]
+  excluded_environment_dap:
+    - "WIH3.2021.51"
+    - "WIH3.2021.59"
+    - "WIH3.2021.65"
+    - "WIH3.2021.72"
+    - "WIH3.2021.79"
+    - "WIH3.2021.86"
+    - "WIH3.2021.88"
+    - "WIH3.2021.93"
+    - "WIH3.2021.95"
+    - "WIH3.2021.109"
+    - "WIH3.2021.115"
+    - "WIH3.2021.129"
+    - "WIH3.2021.142"
+  excluded_model_environment_dap: ["MOH1.2020.13"]
+  excluded_vegetation_indices: ["VARI_new"]
+
+qtl:
+  genotype_effect_follow_up:
+    chromosome: 7
+    trait: "FPC1_NGRDI"
+
+prediction_results:
+  primary_tnp_checkpoint: "best_frozen_pearson_r"
+  cv:
+    dap_metrics: "3.2_Prediction_Results_CV_Projections/20260901_DAP_CV000_PredValues/results"
+    agdd_metrics: "3.2_Prediction_Results_CV_Projections/20260820_AGDD_CV000_PredValues/results"
+    dap_prediction_values: "3.2_Prediction_Results_CV_Projections/20260901_DAP_CV21_PredValues/prediction_values"
+    agdd_prediction_values: "3.2_Prediction_Results_CV_Projections/20260805_AGDD_CV21_PredValues/prediction_values"
+  loeo:
+    dap: "3.2_Prediction_Results_LOEO_Projections/20260730_DAP_NGRDI.FPC12345_PTR.FPC1"
+    agdd: "3.2_Prediction_Results_LOEO_Projections/20260730_AGDD_NGRDI.FPC1234567_PTR.FPC1"
+  tnp_metrics: "3.2_Prediction_Results_Peiman/20260906_Peiman/tidy_all_metrics.csv"
+  workbooks:
+    cv: "G2F_CV_Results_Projections_DAP_and_AGDD_noZe_V3.xlsx"
+    loeo: "G2F_LOEO_Results_Projections_DAP_AGDD_PTR_FPC1_Tiezzi_noZe_V3.xlsx"
