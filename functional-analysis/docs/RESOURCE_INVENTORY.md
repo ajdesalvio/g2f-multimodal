@@ -12,6 +12,10 @@
 | Soil temperature | External: `Weather_SoilTemp_Clean_Tall.csv` (~18.5 MB) |
 | EnvRtype weather data | [EnvRtype_Weather_Data_Cleaned_V2.csv](../data/supplementary/EnvRtype_Weather_Data_Cleaned_V2.csv) |
 | 1,180 genomic–phenomic hybrids | [Pedigree_Overlap_Genomic_Phenomic.csv](../data/supplementary/Pedigree_Overlap_Genomic_Phenomic.csv) |
+| Figure 1 VI variance components and model-fit statistics | [VarComp_G2F_2020_2021.csv](../data/supplementary/VarComp_G2F_2020_2021.csv) |
+| Figure 1 yield variance components and model-fit statistics | [VarComp_Yield_G2F_2020_2021.csv](../data/supplementary/VarComp_Yield_G2F_2020_2021.csv) |
+| VI FPC–yield correlation calculations | [vi_yield_correlations.R](../scripts/02_fpca_weather/vi_yield_correlations.R), adapted from `Unified_FPCA_Yield_Cor_V6.R` |
+| VI FPC–yield correlations, DAP and AGDD | [Pooled](../results/vi_yield_correlations/VI_FPC_Yield_Correlations_Pooled.csv) and [within-environment](../results/vi_yield_correlations/VI_FPC_Yield_Correlations_Within_Environment.csv) tables; [definitions and inputs](../results/vi_yield_correlations/) |
 | QTL/LD genotypes and R/qtl2 reference files | [Michel et al. (2022) dataset](https://doi.org/10.25386/genetics.19439684), File S5; [download and setup](../data/MICHEL_2022_DATA.md) |
 | FPC-only QTL peaks and full QTL table | [QTL results](../results/qtl/) — the separate FPC-only file has 167 peaks; the full source is preserved |
 | DAP/AGDD QTL scan objects | External: 58 RDS files, 32.80 GB; [checksums and folder mapping](../data/QTL_SCAN_ARCHIVE.md); deposit links pending |

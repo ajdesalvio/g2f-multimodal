@@ -6,6 +6,7 @@ Start with the output you want to check:
 |---|---|
 | Final correlation and RMSE summaries | [prediction/](prediction/) |
 | Main and supplementary figures, with source tables | [figures/](figures/) |
+| Vegetation-index FPC–yield correlations, pooled and within environments | [vi_yield_correlations/](vi_yield_correlations/) |
 | Full QTL results, 167 FPC-only peaks, and exploratory annotations | [qtl/](qtl/) |
 | Flight dates, cameras, GSD, and image access | [drone/](drone/) |
 

@@ -23,6 +23,8 @@ heatmaps and preserves its original manual PowerPoint assembly.
 
 ## Source data
 
+- Figure 1: [VI variance components](../../data/supplementary/VarComp_G2F_2020_2021.csv) and [yield variance components](../../data/supplementary/VarComp_Yield_G2F_2020_2021.csv), copied without changing their contents. The VI table includes all VIs and sampling dates; the figure selects NGRDI and four representative environments. `grp` identifies the variance component, `vcov` its variance, `sdcor` its standard deviation, and `Percent` its percentage of total variance. `Rmse`, `Heritability`, and `R_squared` are model-level statistics repeated across component rows. Historical `Pedigree` labels mean genotype; the plotting script relabels them for display only.
+- Figure 2 / VI FPCA Results text: [VI FPC–yield correlations](../vi_yield_correlations/) supplies pooled and within-environment calculations for both DAP and AGDD. These are separate from the weather correlations in Figure 3.
 - Figure 3: [all 151 weather correlations](source_data/Yield_FPC_Correlations_All_DAP.csv), using all-DAP FPCs and the 10,109 matched yield/phenomic records in 19 environments. `T2M_MIN` FPC2 is -0.637662 (displayed as -0.64).
 - Figure 4: [final prediction summary](../prediction/final_summaries/G2F_Final_Prediction_Summary.csv) and [25 LOEO bars](source_data/Figure_04_LOEO_Bars.csv). Genetic-only runs are averaged over DAP/AGDD for display; the complete summary retains both runs.
 - Supplementary Figures 2-4: `source_data/CV*.csv` contains environment-, fold-, and seed-level metrics and paired differences. These use shared seeds 1-5 and five folds; the main kernel summary uses ten seeds.

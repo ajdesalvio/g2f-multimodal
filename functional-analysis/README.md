@@ -6,7 +6,7 @@ This workflow prepares the study data, fits DAP/AGDD functional principal compon
 
 ## Start here
 
-- **Read the results:** [prediction summaries](results/prediction/), [manuscript figures](results/figures/), and [QTL tables](results/qtl/).
+- **Read the results:** [prediction summaries](results/prediction/), [manuscript figures](results/figures/), [VI FPC–yield correlations](results/vi_yield_correlations/), and [QTL tables](results/qtl/).
 - **Find a supplementary file:** [resource inventory](docs/RESOURCE_INVENTORY.md).
 - **Reproduce an analysis:** [execution order](docs/WORKFLOW.md) and [software requirements](environment/README.md).
 

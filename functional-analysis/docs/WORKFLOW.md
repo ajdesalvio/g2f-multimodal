@@ -40,8 +40,9 @@ In `scripts/02_fpca_weather/`:
 - EnvRtype weather: `acquire_clean_dap_weather_fpca_source.R` → `agdd_weather_fpca_source.R`.
 - VI trajectories: `vi_fpca_dap_full.R` and `vi_fpca_agdd_full.R`.
 - Weather/yield source table: `weather_yield_correlations_all_dap.R`.
+- VI/yield descriptive tables: [vi_yield_correlations.R](../scripts/02_fpca_weather/vi_yield_correlations.R), using existing full-data DAP and AGDD scores; [results and input requirements](../results/vi_yield_correlations/).
 
-The last step uses all DAP scores and yield medians from the matched 10,109-record cohort. Set `G2F_REFRESH_WEATHER=TRUE` only when a new NASA POWER download is intended. Normally use archived observations.
+The weather/yield step uses all DAP scores and yield medians from the matched 10,109-record cohort. The VI/yield step correlates individual genotype–environment yield BLUEs with five DAP or seven AGDD components, pooled and within environments. Set `G2F_REFRESH_WEATHER=TRUE` only when a new NASA POWER download is intended. Normally use archived observations.
 
 ## 4. Prepare genomic relationships
 

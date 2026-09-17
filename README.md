@@ -11,6 +11,8 @@ Code, data access, and results for **“An open field phenomics resource for mul
 
 Each workflow has its own environment and setup instructions. For the paper's final combined prediction summaries, go to [prediction results](functional-analysis/results/prediction/). For figures and supplementary resources, use the [figure index](functional-analysis/results/figures/) and [resource inventory](functional-analysis/docs/RESOURCE_INVENTORY.md).
 
+Direct supplementary downloads: Figure 1 [VI variance components](functional-analysis/data/supplementary/VarComp_G2F_2020_2021.csv) and [yield variance components](functional-analysis/data/supplementary/VarComp_Yield_G2F_2020_2021.csv); [VI FPC–yield correlation tables and calculation code](functional-analysis/results/vi_yield_correlations/).
+
 ## QTL and LD reference data
 
 Download the **[Michel et al. (2022) supplementary dataset](https://doi.org/10.25386/genetics.19439684)** for the QTL/LD genotype and R/qtl2 reference files. The required archive is [File S5 control.tar.gz (12.7 MB)](https://ndownloader.figshare.com/files/34591628). Follow the [download and folder setup instructions](functional-analysis/data/MICHEL_2022_DATA.md) before running QTL or LD analyses.

@@ -286,6 +286,64 @@ def layout_and_imagery() -> None:
           "Imagery collections do not cover exactly the 19 analysis environments")
 
 
+def vi_yield_correlations() -> None:
+    prefix = "results/vi_yield_correlations/"
+    common = ("Domain", "Vegetation.Index", "FPC", "FPC_ID", "N", "N_complete", "Cor", "Status")
+    pooled = table(prefix + "VI_FPC_Yield_Correlations_Pooled.csv", 444, common)
+    within = table(prefix + "VI_FPC_Yield_Correlations_Within_Environment.csv",
+                   8436, common + ("Env",))
+    keys = ("Domain", "Vegetation.Index", "FPC")
+    unique(pooled, keys, "Pooled VI-yield correlations")
+    unique(within, keys + ("Env",), "Within-environment VI-yield correlations")
+    numbers(pooled + within, ("Cor",), "VI-yield correlations")
+    check(all(row["Status"] == "ok" and row["N"] == row["N_complete"]
+              for row in pooled + within), "VI-yield correlations have incomplete inputs")
+    check(all(int(row["N"]) == 10109 for row in pooled), "Pooled VI-yield cohort differs")
+    check(all(row["FPC_ID"] == row["FPC"] + "_" + row["Vegetation.Index"]
+              for row in pooled + within), "VI-yield FPC labels disagree")
+    envs = {row["Env"] for row in table(
+        "data/supplementary/Env_Names_G2F_2020_2021.csv", 19, ("Env",))}
+    within_groups: dict[tuple[str, ...], list[dict[str, str]]] = {}
+    for row in within:
+        within_groups.setdefault(tuple(row[k] for k in keys), []).append(row)
+    check(set(within_groups) == {tuple(row[k] for k in keys) for row in pooled},
+          "Pooled and within-environment VI-yield comparisons differ")
+    for key, rows in within_groups.items():
+        check({row["Env"] for row in rows} == envs and
+              sum(int(row["N"]) for row in rows) == 10109,
+              f"VI-yield environment coverage or cohort size differs: {key}")
+    vi_sets = []
+    for domain, count in (("DAP", 5), ("AGDD", 7)):
+        rows = [row for row in pooled if row["Domain"] == domain]
+        vis = {row["Vegetation.Index"] for row in rows}
+        vi_sets.append(vis)
+        check(len(vis) == 37 and "NGRDI" in vis, f"{domain}: expected 37 VIs")
+        check({(row["Vegetation.Index"], row["FPC"]) for row in rows} ==
+              {(vi, f"FPC{i}") for vi in vis for i in range(1, count + 1)},
+              f"{domain}: incomplete VI/component coverage")
+    check(vi_sets[0] == vi_sets[1], "DAP and AGDD VI inventories differ")
+    # Regression references independently checked against the original inputs.
+    lookup = {(r["Domain"], r["FPC"]): float(r["Cor"]) for r in pooled
+              if r["Vegetation.Index"] == "NGRDI"}
+    for key, expected in ((('DAP', 'FPC1'), 0.5502618710330505),
+                          (('AGDD', 'FPC3'), 0.5965899492901966)):
+        check(math.isclose(lookup[key], expected, abs_tol=1e-12, rel_tol=0),
+              f"NGRDI manuscript pooled correlation differs: {key}")
+    for domain, low, high in (("DAP", -0.2902171678964734, 0.7199541835800322),
+                              ("AGDD", -0.4974192244336055, 0.6352543228026053)):
+        values = [float(r["Cor"]) for r in within
+                  if r["Domain"] == domain and r["Vegetation.Index"] == "NGRDI"]
+        check(math.isclose(min(values), low, abs_tol=1e-12, rel_tol=0) and
+              math.isclose(max(values), high, abs_tol=1e-12, rel_tol=0),
+              f"NGRDI manuscript within-environment range differs: {domain}")
+    inputs = table(prefix + "VI_FPC_Yield_Correlation_Inputs.csv", 4,
+                   ("Role", "Filename", "Size_bytes", "MD5"))
+    check({row["Role"] for row in inputs} == {"cohort", "yield", "DAP", "AGDD"},
+          "VI-yield input provenance roles differ")
+    check(all(re.fullmatch(r"[0-9a-f]{32}", r["MD5"]) and
+              int(r["Size_bytes"]) > 0 for r in inputs), "Invalid VI-yield input provenance")
+
+
 def documentation_and_sizes() -> None:
     # Standard inline links plus reference definitions. Fragments are ignored;
     # checking their rendering requires a Markdown renderer, not filesystem QA.
@@ -345,6 +403,7 @@ def main() -> int:
     for name, operation in (("prediction tables", predictions), ("QTL tables", qtl),
                             ("QTL archive inventory", qtl_archive_inventory),
                             ("cohorts and weather", cohorts_and_weather),
+                            ("VI FPC-yield correlations", vi_yield_correlations),
                             ("two-workflow layout and geospatial links", layout_and_imagery),
                             ("Markdown links and file sizes", documentation_and_sizes),
                             ("obvious private material", obvious_private_material)):
